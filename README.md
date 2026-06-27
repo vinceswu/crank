@@ -12,7 +12,7 @@
     <img src="https://img.shields.io/github/issues/vinceswu/crank?style=flat-square">
   </a>
   <a href="https://github.com/vinceswu/crank/blob/master/LICENSE">
-    <img src="https://img.shields.io/badge/license-Custom-blue?style=flat-square">
+    <img src="https://img.shields.io/github/license/vinceswu/crank?style=flat-square">
   </a>
   <img src="https://img.shields.io/badge/language-Olive-informational?style=flat-square">
   <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-informational?style=flat-square">
