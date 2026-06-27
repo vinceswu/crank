@@ -26,7 +26,7 @@ Written in [Olive](https://github.com/ecnivslabs/olive), compiled to a native bi
 
 ## Prerequisites
 
-- **Olive >= 0.1.0** (see installation below)
+- **Olive >= 0.4.2** (see installation below)
 - **Python 3.x** with dependencies from `requirements.txt`
 - `ffmpeg` and `ffprobe` in your system PATH
 
