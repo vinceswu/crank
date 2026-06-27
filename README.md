@@ -147,3 +147,5 @@ For information about creating custom background video plugins, see [PLUGIN_GUID
 3. Commit your changes (`git commit -m 'add my feature'`)
 4. Push to the branch (`git push origin feature/my-feature`)
 5. Submit a pull request
+
+#### *I'd appreciate any feedback or code reviews you might have!*
