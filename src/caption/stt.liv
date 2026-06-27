@@ -1,10 +1,12 @@
 import logging
 import py "faster_whisper" as fw
 import py "torch" as torch
+import py "faster_whisper.transcribe" as fwt
+import py "typing" as typing
 
 struct SpeechToText:
     model_size: str
-    model: PyObject
+    model: fw.WhisperModel | None
     loaded: bool
     device: str
 
@@ -30,10 +32,14 @@ impl SpeechToText:
         else:
             self._load("cpu", "int8")
 
-    fn _run(self, audio_path: str) -> PyObject | Error:
-        try self.model.transcribe(audio_path, word_timestamps=True)
+    fn _run(self, audio_path: str) -> (typing.Iterable, fwt.TranscriptionInfo) | Error:
+        match self.model:
+            None:
+                Error::Error("Whisper model not initialized")
+            model:
+                try model.transcribe(audio_path, word_timestamps=True)
 
-    fn _obtain(self, audio_path: str) -> PyObject | Error:
+    fn _obtain(self, audio_path: str) -> (typing.Iterable, fwt.TranscriptionInfo) | Error:
         self._ensure_model()
 
         match self._run(audio_path):
@@ -42,8 +48,8 @@ impl SpeechToText:
                     logging.warn("CUDA unavailable; using CPU for transcription")
                     logging.debug(f"CUDA error: {e}")
                     self._load("cpu", "int8")
-                    return try self.model.transcribe(audio_path, word_timestamps=True)
-                try self.model.transcribe(audio_path, word_timestamps=True)
+                    return self._run(audio_path)
+                self._run(audio_path)
             seg_info:
                 seg_info
 
@@ -60,8 +66,9 @@ impl SpeechToText:
             ok:
                 ok
 
-        let segments = list(result[0])
-        let info = result[1]
+        let raw_segs: typing.Iterable = result[0]
+        let segments: [fwt.Segment] = list(raw_segs)
+        let info: fwt.TranscriptionInfo = result[1]
 
         let mut out_segments: [Any] = []
         let mut full_text = ""
@@ -69,19 +76,19 @@ impl SpeechToText:
         let mut i = 0
 
         while i < n:
-            let seg: PyObject = segments[i]
+            let seg: fwt.Segment = segments[i]
             let seg_text: str = str(seg.text).strip()
 
             let mut words: [Any] = []
-            let raw_words = seg.words
+            let raw_words: typing.Iterable | None = seg.words
 
             if raw_words != None:
-                let word_list = list(raw_words)
+                let word_list: [fwt.Word] = list(raw_words)
                 let wn = len(word_list)
                 let mut wi = 0
 
                 while wi < wn:
-                    let w: PyObject = word_list[wi]
+                    let w: fwt.Word = word_list[wi]
                     let word_entry: {str: Any} = {
                         "word": str(w.word),
                         "start": float(w.start),

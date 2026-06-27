@@ -3,6 +3,7 @@ import io
 import math
 import logging
 import py "spacy" as spacy
+import py "spacy.tokens" as sptokens
 
 const VERB_COLOR = "{\\c&HD8BFD8&}"
 const PRON_COLOR = "{\\c&HFFDAB9&}"
@@ -12,7 +13,7 @@ struct Handler:
     font: str
     stt: SpeechToText
     header: str
-    nlp: PyObject
+    nlp: spacy.Language | None
     nlp_loaded: bool
 
 impl Handler:
@@ -52,28 +53,32 @@ impl Handler:
     fn _apply_pos_coloring(self, words: [str]) -> str:
         self._ensure_nlp()
 
-        let text = " ".join(words)
-        let doc = self.nlp(text)
+        match self.nlp:
+            None:
+                " ".join(words)
+            nlp:
+                let text = " ".join(words)
+                let doc = nlp(text)
 
-        let mut parts: [str] = []
-        let n = len(doc)
-        let mut i = 0
+                let mut parts: [str] = []
+                let n = len(doc)
+                let mut i = 0
 
-        while i < n:
-            let tok: PyObject = doc[i]
-            let pos: str = str(tok.pos_)
-            let txt: str = str(tok.text)
+                while i < n:
+                    let tok: sptokens.Token = doc[i]
+                    let pos: str = str(tok.pos_)
+                    let txt: str = str(tok.text)
 
-            if pos == "VERB":
-                parts.append(VERB_COLOR + txt)
-            elif pos == "PRON":
-                parts.append(PRON_COLOR + txt)
-            else:
-                parts.append(txt)
+                    if pos == "VERB":
+                        parts.append(VERB_COLOR + txt)
+                    elif pos == "PRON":
+                        parts.append(PRON_COLOR + txt)
+                    else:
+                        parts.append(txt)
 
-            i += 1
+                    i += 1
 
-        " ".join(parts)
+                " ".join(parts)
 
     fn _chunk_size(self, words_data: &[Any], i: int) -> int:
         let current: {str: Any} = words_data[i]

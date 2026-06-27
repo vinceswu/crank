@@ -1,12 +1,14 @@
 from utils.constants import COOKIE_REFRESH_INTERVAL, MAX_VIDEO_DURATION
+from processor import VideoProcessor
 import io
 import math
 import time
 import regex
 import logging
 import py "yt_dlp" as ytdlp
-import py "browser_cookie3" as bc3
 import py "http.cookiejar" as cookiejar
+import py "browser_cookie3" as bc3
+import py "typing" as typing
 
 const USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
 
@@ -14,11 +16,11 @@ struct YouTubeScraper:
     workspace: str
     cookies_file: str
     max_results: int
-    processor: PyObject
+    processor: VideoProcessor | None
     last_cookie_refresh: float
 
 impl YouTubeScraper:
-    fn __init__(self, workspace: str, cookies_file: str, processor: PyObject):
+    fn __init__(self, workspace: str, cookies_file: str, processor: VideoProcessor | None):
         self.workspace = workspace
         self.processor = processor
         io.mkdir(workspace)
@@ -48,16 +50,16 @@ impl YouTubeScraper:
         self.last_cookie_refresh = time.now()
         logging.info(f"Exported cookies to {path}")
 
-    fn _read_cookies(self, reader: PyObject, jar: PyObject) -> int | Error:
-        let source = try reader(domain_name=".youtube.com")
-        let cookies = list(source)
+    fn _read_cookies(self, reader: typing.Callable, jar: cookiejar.MozillaCookieJar) -> int | Error:
+        let raw_source: cookiejar.CookieJar = try reader(domain_name=".youtube.com")
+        let cookies = list(raw_source)
 
         let mut count = 0
         let n = len(cookies)
         let mut i = 0
 
         while i < n:
-            let cookie: PyObject = cookies[i]
+            let cookie: cookiejar.Cookie = cookies[i]
             jar.set_cookie(cookie)
             count += 1
             i += 1
@@ -90,12 +92,12 @@ impl YouTubeScraper:
                 keywords.append(tok)
         keywords
 
-    fn _text_of(self, entry: PyObject) -> str:
+    fn _text_of(self, entry: &{str: Any}) -> str:
         let title: str = str(entry.get("title", ""))
         let description: str = str(entry.get("description", ""))
         f"{title} {description}".lower()
 
-    fn _relevance_score(self, entry: PyObject, keywords: &[str]) -> int:
+    fn _relevance_score(self, entry: &{str: Any}, keywords: &[str]) -> int:
         if len(keywords) == 0:
             return 0
 
@@ -107,7 +109,7 @@ impl YouTubeScraper:
                 score += 1
         score
 
-    fn _score_entry(self, entry: PyObject) -> float:
+    fn _score_entry(self, entry: &{str: Any}) -> float:
         let mut score = 0.0
         let duration = float(entry.get("duration", 0))
 
@@ -154,7 +156,7 @@ impl YouTubeScraper:
             score = score + math.min(3.0, math.log10(views + 1.0))
         score
 
-    fn _search(self, query: str, max_results: int) -> PyObject | Error:
+    fn _search(self, query: str, max_results: int) -> {str: Any} | Error:
         let opts: {str: Any} = {
             "quiet": True,
             "no_warnings": True,
@@ -170,7 +172,7 @@ impl YouTubeScraper:
         let ydl = ytdlp.YoutubeDL(realize(opts))
         try ydl.extract_info(f"ytsearch{max_results}:{query}", download=False)
 
-    fn _fetch_meta(self, video_id: str) -> PyObject | Error:
+    fn _fetch_meta(self, video_id: str) -> {str: Any} | Error:
         let opts: {str: Any} = {
             "quiet": True,
             "no_warnings": True,
@@ -200,12 +202,12 @@ impl YouTubeScraper:
             Error(e):
                 logging.debug(f"Search failed for variant: {e}")
             info:
-                let entries = info["entries"]
+                let entries: [{str: Any}] = info["entries"]
                 let n = len(entries)
                 let mut i = 0
 
                 while i < n:
-                    let e: PyObject = entries[i]
+                    let e: {str: Any} = entries[i]
                     let vid: str = str(e.get("id", ""))
                     if len(vid) == 11:
                         ids.append(vid)
@@ -218,8 +220,8 @@ impl YouTubeScraper:
                 logging.debug(f"Metadata fetch failed: {e}")
                 -1.0
             meta:
-                let rel = float(self._relevance_score(meta, keywords))
-                rel * 1000.0 + self._score_entry(meta)
+                let rel = float(self._relevance_score(&meta, keywords))
+                rel * 1000.0 + self._score_entry(&meta)
 
     fn _best_candidate(self, query: str, ids: &[str]) -> str:
         let keywords = self._extract_keywords(query)
@@ -238,7 +240,7 @@ impl YouTubeScraper:
             i += 1
         best_id
 
-    fn _extract(self, ydl: PyObject, target: str, download: bool) -> PyObject | Error:
+    fn _extract(self, ydl: ytdlp.YoutubeDL, target: str, download: bool) -> {str: Any} | Error:
         try ydl.extract_info(target, download=download)
 
     fn _download(self, video_id: str) -> str:

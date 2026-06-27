@@ -47,7 +47,7 @@ impl Editor:
 
         float(parsed["format"]["duration"])
 
-    fn _run_ffmpeg(self, cmd: [str]) -> PyObject | Error:
+    fn _run_ffmpeg(self, cmd: [str]) -> sp.CompletedProcess | Error:
         try sp.run(cmd, check=True, capture_output=True, text=True, timeout=300)
 
     fn assemble(

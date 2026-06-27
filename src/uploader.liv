@@ -14,14 +14,14 @@ struct VideoData:
     description: str = "Like and Subscribe!!"
     category_id: int = 24
     delay: int = 0
-    last_upload: PyObject = None
+    last_upload: dt.datetime | None = None
 
 enum AuthResult:
     AuthOk
     AuthError(str)
 
 enum UploadOutcome:
-    Uploaded(str, PyObject)
+    Uploaded(str, dt.datetime)
     SecretsMissing(str)
     AuthFailed(str)
     UploadFailed(str)
@@ -31,8 +31,8 @@ struct Uploader:
     secrets_file: str
     token_file: str
     scopes: [str]
-    credentials: PyObject
-    service: PyObject
+    credentials: gcreds.Credentials | None
+    service: gdiscovery.Resource | None
     authenticated: bool
 
 impl Uploader:
@@ -92,14 +92,14 @@ impl Uploader:
                 self.authenticated = True
                 AuthOk
 
-    fn _schedule_time(self, video: VideoData, now: PyObject) -> PyObject:
+    fn _schedule_time(self, video: VideoData, now: dt.datetime) -> dt.datetime:
         if video.last_upload != None and video.delay > 0:
             let candidate = video.last_upload + dt.timedelta(hours=video.delay)
             if candidate > now:
                 return candidate
         now
 
-    fn _build_body(self, video: VideoData, scheduled: PyObject, now: PyObject) -> {str: Any}:
+    fn _build_body(self, video: VideoData, scheduled: dt.datetime, now: dt.datetime) -> {str: Any}:
         let mut body: {str: Any} = {
             "snippet": {
                 "title": f"{video.title} #shorts",
@@ -115,7 +115,7 @@ impl Uploader:
 
         body
 
-    fn _execute(self, body: {str: Any}, media_path: str) -> PyObject | Error:
+    fn _execute(self, body: {str: Any}, media_path: str) -> {str: Any} | Error:
         let media = ghttp.MediaFileUpload(media_path, mimetype="video/*", resumable=True)
         let request = self.service.videos().insert(
             part="snippet,status",
