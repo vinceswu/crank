@@ -118,7 +118,7 @@ python -m spacy download en_core_web_md
 pit run
 
 # Custom config path
-pit run -- --path path/to/your_config.yml
+pit run --path path/to/your_config.yml
 ```
 
 ## Example Output
