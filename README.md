@@ -21,8 +21,6 @@
 
 **Crank** takes a topic and generates a complete YouTube Short, including video and metadata, ready for upload. Designed for fast, efficient content creation with full control over the output.
 
-Written in [Olive](https://github.com/ecnivslabs/olive), compiled to a native binary.
-
 ## Prerequisites
 
 - **Olive >= 0.4.2** (see installation below)
