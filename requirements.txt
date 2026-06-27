@@ -1,0 +1,9 @@
+browser-cookie3>=0.20.1
+faster-whisper>=1.2.1
+google-api-python-client>=2.136.0
+google-auth>=2.49.1
+google-auth-oauthlib>=1.2.0
+google-genai>=2.10.0
+spacy>=3.8.13
+torch>=2.11.0
+yt-dlp>=2026.3.17
