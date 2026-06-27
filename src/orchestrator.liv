@@ -28,7 +28,16 @@ struct Orchestrator:
     prompt: Prompt
 
 impl Orchestrator:
-    fn __init__(self, preset: YmlHandler, plugin: BackgroundVideoPlugin, gemini: Gemini, editor: Editor, caption: Handler, uploader: Uploader, upload_enabled: bool):
+    fn __init__(
+        self,
+        preset: YmlHandler,
+        plugin: BackgroundVideoPlugin,
+        gemini: Gemini,
+        editor: Editor,
+        caption: Handler,
+        uploader: Uploader,
+        upload_enabled: bool,
+    ):
         self.preset = preset
         self.plugin = plugin
         self.gemini = gemini
@@ -109,7 +118,14 @@ impl Orchestrator:
 
     fn _upload(self, data: {str: str}, video_path: str) -> str:
         let title = data["title"]
-        let mut video = VideoData(video_path, f"{title} #shorts", data["description"], 24, int(self.preset.get("DELAY", 0)), self.preset.get("LAST_UPLOAD", None))
+        let mut video = VideoData(
+            video_path,
+            f"{title} #shorts",
+            data["description"],
+            24,
+            int(self.preset.get("DELAY", 0)),
+            self.preset.get("LAST_UPLOAD", None),
+        )
 
         match self.uploader.upload(video):
             Uploaded(url, _when):
@@ -132,7 +148,8 @@ impl Orchestrator:
 
         self._begin("Generating content script")
         let text = match self._gemini_text(query):
-            Ok(response): response
+            Ok(response):
+                response
             EmptyTranscript:
                 self._cross()
                 return self._fail("Empty transcript")
@@ -159,7 +176,8 @@ impl Orchestrator:
 
         self._begin("Generating voiceover")
         let audio_path = match self.gemini.get_audio(transcript):
-            Ok(p): p
+            Ok(p):
+                p
             EmptyTranscript:
                 self._cross()
                 return self._fail("Empty transcript")
@@ -203,7 +221,8 @@ impl Orchestrator:
 
         self._begin("Assembling video elements")
         let mut output = match self.editor.assemble(cap_path, audio_path, video_input, "", False):
-            Done(path): path
+            Done(path):
+                path
             FileMissing(f):
                 self._cross()
                 return self._fail(f"File missing: {f}")

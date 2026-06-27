@@ -49,12 +49,17 @@ impl Core:
         if api_key == "":
             api_key = os.getenv("GEMINI_API_KEY")
         if api_key == "":
-            print(f"{RED}GEMINI_API_KEY not found. Set it in config/preset.yml or the environment.{RESET}")
+            print(
+                f"{RED}GEMINI_API_KEY not found. Set it in config/preset.yml or the environment.{RESET}",
+            )
             os.exit(1)
         let client = genai.Client(api_key=api_key)
 
         let upload_enabled = self.preset.get("UPLOAD", True) != False
-        let uploader = Uploader(self.channel_name, str(self.preset.get("OAUTH_PATH", DEFAULT_SECRETS_FILE)))
+        let uploader = Uploader(
+            self.channel_name,
+            str(self.preset.get("OAUTH_PATH", DEFAULT_SECRETS_FILE)),
+        )
 
         let mut registry = PluginRegistry()
         registry.register("default", make_default)
@@ -68,12 +73,25 @@ impl Core:
                 print(f"{RED}Failed to load plugin '{plugin_name}'.{RESET}")
                 os.exit(1)
                 make_default(workspace)
-            p: p
+            p:
+                p
 
         let gemini = Gemini(client, workspace)
         let editor = Editor(workspace)
-        let caption = Handler(workspace, str(self.preset.get("WHISPER_MODEL", DEFAULT_WHISPER_MODEL)), str(self.preset.get("FONT", DEFAULT_FONT)))
-        self.orchestrator = Orchestrator(self.preset, plugin, gemini, editor, caption, uploader, upload_enabled)
+        let caption = Handler(
+            workspace,
+            str(self.preset.get("WHISPER_MODEL", DEFAULT_WHISPER_MODEL)),
+            str(self.preset.get("FONT", DEFAULT_FONT)),
+        )
+        self.orchestrator = Orchestrator(
+            self.preset,
+            plugin,
+            gemini,
+            editor,
+            caption,
+            uploader,
+            upload_enabled,
+        )
 
     fn _time_left(self) -> int:
         let limit = float(self.preset.get("LIMIT_TIME", 0.0))
@@ -94,9 +112,11 @@ impl Core:
 
             while left > 0:
                 let hours = left / 3600
-                let minutes = (left % 3600) / 60
+                let minutes = left % 3600 / 60
                 let seconds = left % 60
-                sys.stdout.write(f"\r{DIM}Waiting: {hours:02d}h {minutes:02d}m {seconds:02d}s remaining{RESET}")
+                sys.stdout.write(
+                    f"\r{DIM}Waiting: {hours:02d}h {minutes:02d}m {seconds:02d}s remaining{RESET}",
+                )
                 sys.stdout.flush()
                 time.sleep(1.0)
                 left -= 1
@@ -112,7 +132,9 @@ impl Core:
             let mut topic = preset_prompt
 
             if preset_prompt != "":
-                print(f"\n{WHITE}({self.channel_name}) >>>{RESET} {YELLOW}Prompt imported from preset{RESET}\n")
+                print(
+                    f"\n{WHITE}({self.channel_name}) >>>{RESET} {YELLOW}Prompt imported from preset{RESET}\n",
+                )
             else:
                 sys.stdout.write(f"\n{WHITE}({self.channel_name}) >>>{RESET} ")
                 sys.stdout.flush()

@@ -23,7 +23,16 @@ impl Editor:
         if not io.exists(file_path):
             return -1.0
 
-        let cmd = ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "json", file_path]
+        let cmd = [
+            "ffprobe",
+            "-v",
+            "error",
+            "-show_entries",
+            "format=duration",
+            "-of",
+            "json",
+            file_path,
+        ]
         let proc = sp.run(cmd, capture_output=True, text=True)
 
         if int(proc.returncode) != 0:
@@ -41,7 +50,14 @@ impl Editor:
     fn _run_ffmpeg(self, cmd: [str]) -> PyObject | Error:
         try sp.run(cmd, check=True, capture_output=True, text=True, timeout=300)
 
-    fn assemble(self, ass_path: str, audio_path: str, media_path: str, background_audio_path: str = "", suppress_captions: bool = False) -> EditResult:
+    fn assemble(
+        self,
+        ass_path: str,
+        audio_path: str,
+        media_path: str,
+        background_audio_path: str = "",
+        suppress_captions: bool = False,
+    ) -> EditResult:
         if not io.exists(ass_path):
             return FileMissing(ass_path)
 
@@ -85,7 +101,31 @@ impl Editor:
         if audio_filter != "":
             filter_complex = filter_complex + ";" + audio_filter
 
-        cmd = cmd + ["-filter_complex", filter_complex, "-map", last_label, "-map", audio_map, "-c:v", FFMPEG_VIDEO_CODEC, "-preset", FFMPEG_PRESET, "-crf", str(FFMPEG_CRF), "-c:a", FFMPEG_AUDIO_CODEC, "-b:a", FFMPEG_AUDIO_BITRATE, "-pix_fmt", FFMPEG_PIX_FMT, "-movflags", "+faststart", "-t", str(final_duration), output_path]
+        cmd = cmd + [
+            "-filter_complex",
+            filter_complex,
+            "-map",
+            last_label,
+            "-map",
+            audio_map,
+            "-c:v",
+            FFMPEG_VIDEO_CODEC,
+            "-preset",
+            FFMPEG_PRESET,
+            "-crf",
+            str(FFMPEG_CRF),
+            "-c:a",
+            FFMPEG_AUDIO_CODEC,
+            "-b:a",
+            FFMPEG_AUDIO_BITRATE,
+            "-pix_fmt",
+            FFMPEG_PIX_FMT,
+            "-movflags",
+            "+faststart",
+            "-t",
+            str(final_duration),
+            output_path,
+        ]
 
         match self._run_ffmpeg(cmd):
             Error(e):

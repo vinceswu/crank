@@ -64,7 +64,9 @@ impl YouTubeScraper:
         count
 
     fn _refresh_cookies_if_needed(self):
-        if not io.exists(self.cookies_file) or time.now() - self.last_cookie_refresh > float(COOKIE_REFRESH_INTERVAL):
+        if not io.exists(
+            self.cookies_file,
+        ) or time.now() - self.last_cookie_refresh > float(COOKIE_REFRESH_INTERVAL):
             logging.info("Refreshing cookies...")
             self._export_cookies()
 
@@ -83,7 +85,7 @@ impl YouTubeScraper:
         let mut keywords: [str] = []
 
         for tok in base.split(" "):
-            if len(tok) >= 4 and not (tok in seen):
+            if len(tok) >= 4 and not tok in seen:
                 seen[tok] = True
                 keywords.append(tok)
         keywords
@@ -115,8 +117,26 @@ impl YouTubeScraper:
             score = score + 1.0
 
         let text = self._text_of(entry)
-        let positives = ["cinematic", "b-roll", "slow motion", "macro", "aerial", "timelapse", "drone", "gimbal", "hyperlapse"]
-        let negatives = ["compilation", "meme", "asmr", "commentary", "podcast", "reaction", "shorts"]
+        let positives = [
+            "cinematic",
+            "b-roll",
+            "slow motion",
+            "macro",
+            "aerial",
+            "timelapse",
+            "drone",
+            "gimbal",
+            "hyperlapse",
+        ]
+        let negatives = [
+            "compilation",
+            "meme",
+            "asmr",
+            "commentary",
+            "podcast",
+            "reaction",
+            "shorts",
+        ]
 
         for p in &positives:
             if text.contains(p):

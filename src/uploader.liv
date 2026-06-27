@@ -48,13 +48,21 @@ impl Uploader:
 
     fn _authenticate(self) -> bool | Error:
         if io.exists(self.token_file) and self.credentials == None:
-            self.credentials = try gcreds.Credentials.from_authorized_user_file(self.token_file, self.scopes)
+            self.credentials = try gcreds.Credentials.from_authorized_user_file(
+                self.token_file,
+                self.scopes,
+            )
 
         if self.credentials == None or int(self.credentials.valid) == 0:
-            if self.credentials != None and int(self.credentials.expired) == 1 and self.credentials.refresh_token != None:
+            if self.credentials != None and int(
+                self.credentials.expired,
+            ) == 1 and self.credentials.refresh_token != None:
                 try self.credentials.refresh(gauth.Request())
             else:
-                let flow = try gflow.InstalledAppFlow.from_client_secrets_file(self.secrets_file, self.scopes)
+                let flow = try gflow.InstalledAppFlow.from_client_secrets_file(
+                    self.secrets_file,
+                    self.scopes,
+                )
                 self.credentials = try flow.run_local_server(port=0, open_browser=False)
             io.write_file(self.token_file, str(self.credentials.to_json()))
 
@@ -109,7 +117,11 @@ impl Uploader:
 
     fn _execute(self, body: {str: Any}, media_path: str) -> PyObject | Error:
         let media = ghttp.MediaFileUpload(media_path, mimetype="video/*", resumable=True)
-        let request = self.service.videos().insert(part="snippet,status", body=body, media_body=media)
+        let request = self.service.videos().insert(
+            part="snippet,status",
+            body=body,
+            media_body=media,
+        )
         try request.execute()
 
     fn upload(self, video: VideoData) -> UploadOutcome:
@@ -121,7 +133,6 @@ impl Uploader:
                 return AuthFailed(e)
             _:
                 pass
-
         let now = dt.datetime.now(dt.UTC)
         let scheduled = self._schedule_time(video, now)
         let body = self._build_body(video, scheduled, now)

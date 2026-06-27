@@ -65,7 +65,7 @@ impl Gemini:
 
     fn _tts_generate(self, transcript: str) -> gtypes.GenerateContentResponse | Error:
         let voice_cfg = gtypes.VoiceConfig(
-            prebuilt_voice_config=gtypes.PrebuiltVoiceConfig(voice_name=self.voice)
+            prebuilt_voice_config=gtypes.PrebuiltVoiceConfig(voice_name=self.voice),
         )
         let cfg = gtypes.GenerateContentConfig(
             response_modalities=["AUDIO"],
