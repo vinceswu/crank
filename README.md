@@ -19,7 +19,7 @@
 
 ## Overview
 
-**Crank** takes a topic and generates a complete YouTube Short, including video and metadata, ready for upload. Designed for fast, efficient content creation with full control over the output.
+**Crank** takes a topic and generates a complete YouTube Short (video and metadata) ready for upload. It's written in [Olive](https://github.com/ecnivslabs/olive), a fast compiled language that keeps the pipeline lean and the output predictable.
 
 ## Prerequisites
 
