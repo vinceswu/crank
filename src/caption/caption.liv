@@ -1,0 +1,172 @@
+from caption.stt import SpeechToText
+import io
+import math
+import logging
+import py "spacy" as spacy
+
+const VERB_COLOR = "{\\c&HD8BFD8&}"
+const PRON_COLOR = "{\\c&HFFDAB9&}"
+
+struct Handler:
+    workspace: str
+    font: str
+    stt: SpeechToText
+    header: str
+    nlp: PyObject
+    nlp_loaded: bool
+
+impl Handler:
+    fn __init__(self, workspace: str, model_size: str, font: str):
+        self.workspace = workspace
+        io.mkdir(workspace)
+        self.font = font
+        self.stt = SpeechToText(model_size)
+        self.nlp = None
+        self.nlp_loaded = False
+        self.header = self._build_header(font)
+
+    fn _build_header(self, font: str) -> str:
+        let mut h = "[Script Info]\nScriptType: v4.00+\nPlayResX: 1920\nPlayResY: 1080\n"
+        h = h + "[V4+ Styles]\n"
+        h = h + "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n"
+        h = h + f"Style: Dynamic, {font}, 48, &H00FFFFFF, &H000000FF, &H00000000, &H80000000, 1, 0, 0, 0, 100, 100, 0, 0, 1, 2, 0, 5, 50, 50, 20, 1\n"
+        h = h + "[Events]\n"
+        h = h + "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"
+        h
+
+    fn _ensure_nlp(self):
+        if self.nlp_loaded:
+            return
+
+        logging.info("Loading spaCy model 'en_core_web_md'")
+        self.nlp = spacy.load("en_core_web_md", disable=["ner", "lemmatizer"])
+        self.nlp_loaded = True
+
+    fn _format_timestamp(self, ts: float) -> str:
+        let h = int(ts / 3600.0)
+        let m = int(math.fmod(ts, 3600.0) / 60.0)
+        let s = int(math.fmod(ts, 60.0))
+        let cs = int((ts - float(int(ts))) * 100.0)
+        f"{h}:{m:02d}:{s:02d}.{cs:02d}"
+
+    fn _apply_pos_coloring(self, words: [str]) -> str:
+        self._ensure_nlp()
+
+        let text = " ".join(words)
+        let doc = self.nlp(text)
+
+        let mut parts: [str] = []
+        let n = len(doc)
+        let mut i = 0
+
+        while i < n:
+            let tok: PyObject = doc[i]
+            let pos: str = str(tok.pos_)
+            let txt: str = str(tok.text)
+
+            if pos == "VERB":
+                parts.append(VERB_COLOR + txt)
+            elif pos == "PRON":
+                parts.append(PRON_COLOR + txt)
+            else:
+                parts.append(txt)
+
+            i += 1
+
+        " ".join(parts)
+
+    fn _chunk_size(self, words_data: &[Any], i: int) -> int:
+        let current: {str: Any} = words_data[i]
+        let current_word: str = str(current["word"]).strip()
+
+        if len(current_word) > 8:
+            return 1
+
+        let mut chunk_size = 1
+        let mut total_chars = len(current_word)
+        let mut limit = i + 2
+
+        if len(words_data) < limit:
+            limit = len(words_data)
+
+        let mut j = i + 1
+
+        while j < limit:
+            let nxt: {str: Any} = words_data[j]
+            let next_word: str = str(nxt["word"]).strip()
+
+            if total_chars + len(next_word) + 1 > 20:
+                break
+
+            if len(next_word) > 8:
+                break
+
+            chunk_size += 1
+            total_chars = total_chars + len(next_word) + 1
+
+            if chunk_size >= 3:
+                break
+
+            j += 1
+
+        chunk_size
+
+    fn _segment_lines(self, segment: {str: Any}) -> [str]:
+        let mut lines: [str] = []
+        let words_data: [Any] = segment.get("words", [])
+
+        if len(words_data) == 0:
+            let start = self._format_timestamp(float(segment["start"]))
+            let end = self._format_timestamp(float(segment["end"]))
+            let text: str = str(segment["text"]).strip()
+            lines.append(f"Dialogue: 0,{start},{end},Dynamic,,0,0,0,,{text}")
+            return lines
+
+        let mut i = 0
+        let total = len(words_data)
+
+        while i < total:
+            let chunk_size = self._chunk_size(&words_data, i)
+            let first: {str: Any} = words_data[i]
+            let last: {str: Any} = words_data[i + chunk_size - 1]
+            let start_time = float(first["start"])
+            let end_time = float(last["end"])
+
+            let mut words_text: [str] = []
+            let mut k = 0
+
+            while k < chunk_size:
+                let w: {str: Any} = words_data[i + k]
+                words_text.append(str(w["word"]).strip())
+                k += 1
+
+            let formatted = self._apply_pos_coloring(words_text)
+            let start = self._format_timestamp(start_time)
+            let end = self._format_timestamp(end_time)
+            lines.append(f"Dialogue: 0,{start},{end},Dynamic,,0,0,0,,{formatted}")
+            i += chunk_size
+
+        lines
+
+    fn get_captions(self, audio_path: str) -> (str, {str: Any}):
+        if not io.exists(audio_path):
+            logging.error(f"Audio file not found: {audio_path}")
+            return ("", {})
+
+        let result = self.stt.transcribe(audio_path)
+        let path = io.path_join(self.workspace, "captions.ass")
+
+        let mut content = self.header
+        let segments: [Any] = result["segments"]
+        let n = len(segments)
+        let mut i = 0
+
+        while i < n:
+            let segment: {str: Any} = segments[i]
+            for line in self._segment_lines(segment):
+                content = content + line + "\n"
+            i += 1
+
+        io.write_file(path, content)
+        logging.info(f"ASS saved to {path}")
+        (path, result)

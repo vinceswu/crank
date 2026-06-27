@@ -1,0 +1,21 @@
+from core.app import run_app
+from utils.constants import DEFAULT_PRESET_FILE
+import os
+
+fn main():
+    let argv = os.args()
+    let mut preset_path = ""
+    let mut i = 1
+    while i < len(argv):
+        let arg: str = argv[i]
+        if arg == "--path" and i + 1 < len(argv):
+            preset_path = argv[i + 1]
+            i += 1
+        i += 1
+
+    if preset_path == "":
+        preset_path = os.getenv("PRESET_PATH")
+    if preset_path == "":
+        preset_path = DEFAULT_PRESET_FILE
+
+    run_app(preset_path)

@@ -1,0 +1,267 @@
+from utils.constants import COOKIE_REFRESH_INTERVAL, MAX_VIDEO_DURATION
+import io
+import math
+import time
+import regex
+import logging
+import py "yt_dlp" as ytdlp
+import py "browser_cookie3" as bc3
+import py "http.cookiejar" as cookiejar
+
+const USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+
+struct YouTubeScraper:
+    workspace: str
+    cookies_file: str
+    max_results: int
+    processor: PyObject
+    last_cookie_refresh: float
+
+impl YouTubeScraper:
+    fn __init__(self, workspace: str, cookies_file: str, processor: PyObject):
+        self.workspace = workspace
+        self.processor = processor
+        io.mkdir(workspace)
+
+        if cookies_file != "":
+            self.cookies_file = cookies_file
+            self.last_cookie_refresh = 0.0
+        else:
+            self.cookies_file = io.path_join(workspace, "cookies.txt")
+            self.last_cookie_refresh = 0.0
+            self._export_cookies()
+        self.max_results = 10
+
+    fn _export_cookies(self):
+        let path = io.path_join(self.workspace, "cookies.txt")
+        let jar = cookiejar.MozillaCookieJar(path)
+
+        for reader in [bc3.chrome, bc3.firefox]:
+            match self._read_cookies(reader, jar):
+                Error(e):
+                    logging.debug(f"Failed to read cookies: {e}")
+                loaded:
+                    logging.debug(f"Loaded {loaded} cookies")
+
+        jar.save()
+        self.cookies_file = path
+        self.last_cookie_refresh = time.now()
+        logging.info(f"Exported cookies to {path}")
+
+    fn _read_cookies(self, reader: PyObject, jar: PyObject) -> int | Error:
+        let source = try reader(domain_name=".youtube.com")
+        let cookies = list(source)
+
+        let mut count = 0
+        let n = len(cookies)
+        let mut i = 0
+
+        while i < n:
+            let cookie: PyObject = cookies[i]
+            jar.set_cookie(cookie)
+            count += 1
+            i += 1
+        count
+
+    fn _refresh_cookies_if_needed(self):
+        if not io.exists(self.cookies_file) or time.now() - self.last_cookie_refresh > float(COOKIE_REFRESH_INTERVAL):
+            logging.info("Refreshing cookies...")
+            self._export_cookies()
+
+    fn _enrich_query(self, query: str) -> [str]:
+        let positive = "cinematic b-roll slow motion macro aerial timelapse high contrast high motion establishing shot parallax tracking shot drone gimbal hyperlapse"
+        let negative = "-talking head -podcast -news -reaction -gameplay -ui -compilation -asmr -commentary -shorts -tiktok -reels"
+
+        let base = regex.replace_all("[^a-zA-Z0-9 ]", query, " ").strip()
+        let strong = f"{base} {positive} {negative}"
+        let light = f"{base} cinematic b-roll aerial timelapse"
+        [strong, light, base]
+
+    fn _extract_keywords(self, query: str) -> [str]:
+        let base = regex.replace_all("[^a-zA-Z0-9 ]", query, " ").lower()
+        let mut seen: {str: bool} = {}
+        let mut keywords: [str] = []
+
+        for tok in base.split(" "):
+            if len(tok) >= 4 and not (tok in seen):
+                seen[tok] = True
+                keywords.append(tok)
+        keywords
+
+    fn _text_of(self, entry: PyObject) -> str:
+        let title: str = str(entry.get("title", ""))
+        let description: str = str(entry.get("description", ""))
+        f"{title} {description}".lower()
+
+    fn _relevance_score(self, entry: PyObject, keywords: &[str]) -> int:
+        if len(keywords) == 0:
+            return 0
+
+        let text = self._text_of(entry)
+        let mut score = 0
+
+        for k in keywords:
+            if text.contains(k):
+                score += 1
+        score
+
+    fn _score_entry(self, entry: PyObject) -> float:
+        let mut score = 0.0
+        let duration = float(entry.get("duration", 0))
+
+        if duration >= 90.0:
+            score = score + 3.0
+        elif duration >= 60.0:
+            score = score + 1.0
+
+        let text = self._text_of(entry)
+        let positives = ["cinematic", "b-roll", "slow motion", "macro", "aerial", "timelapse", "drone", "gimbal", "hyperlapse"]
+        let negatives = ["compilation", "meme", "asmr", "commentary", "podcast", "reaction", "shorts"]
+
+        for p in &positives:
+            if text.contains(p):
+                score = score + 2.0
+        for n in &negatives:
+            if text.contains(n):
+                score = score - 3.0
+
+        let url: str = str(entry.get("webpage_url", ""))
+        if url.lower().contains("shorts"):
+            score = score - 4.0
+
+        let views = float(entry.get("view_count", 0))
+        if views > 0.0:
+            score = score + math.min(3.0, math.log10(views + 1.0))
+        score
+
+    fn _search(self, query: str, max_results: int) -> PyObject | Error:
+        let opts: {str: Any} = {
+            "quiet": True,
+            "no_warnings": True,
+            "extract_flat": True,
+            "skip_download": True,
+            "cookiefile": self.cookies_file,
+            "sleep_interval": 1,
+            "max_sleep_interval": 5,
+            "retries": 3,
+            "geo_bypass": True,
+        }
+
+        let ydl = ytdlp.YoutubeDL(realize(opts))
+        try ydl.extract_info(f"ytsearch{max_results}:{query}", download=False)
+
+    fn _fetch_meta(self, video_id: str) -> PyObject | Error:
+        let opts: {str: Any} = {
+            "quiet": True,
+            "no_warnings": True,
+            "skip_download": True,
+            "cookiefile": self.cookies_file,
+            "geo_bypass": True,
+        }
+
+        let ydl = ytdlp.YoutubeDL(realize(opts))
+        try ydl.extract_info(f"https://www.youtube.com/watch?v={video_id}", download=False)
+
+    fn _collect_candidates(self, query: str, max_results: int) -> [str]:
+        let variants = self._enrich_query(query)
+        let mut ids: [str] = []
+
+        for variant in &variants:
+            let found = self._search_variant(variant, max_results)
+            ids = found
+            if len(ids) > 0:
+                break
+        ids
+
+    fn _search_variant(self, variant: str, max_results: int) -> [str]:
+        let mut ids: [str] = []
+
+        match self._search(variant, max_results):
+            Error(e):
+                logging.debug(f"Search failed for variant: {e}")
+            info:
+                let entries = info["entries"]
+                let n = len(entries)
+                let mut i = 0
+
+                while i < n:
+                    let e: PyObject = entries[i]
+                    let vid: str = str(e.get("id", ""))
+                    if len(vid) == 11:
+                        ids.append(vid)
+                    i += 1
+        ids
+
+    fn _candidate_score(self, video_id: str, keywords: &[str]) -> float:
+        match self._fetch_meta(video_id):
+            Error(e):
+                logging.debug(f"Metadata fetch failed: {e}")
+                -1.0
+            meta:
+                let rel = float(self._relevance_score(meta, keywords))
+                rel * 1000.0 + self._score_entry(meta)
+
+    fn _best_candidate(self, query: str, ids: &[str]) -> str:
+        let keywords = self._extract_keywords(query)
+        let mut best_id = ""
+        let mut best_key = -1.0
+        let n = len(ids)
+
+        let mut i = 0
+        while i < n:
+            let vid = ids[i]
+            let score = self._candidate_score(vid, &keywords)
+
+            if score > best_key:
+                best_key = score
+                best_id = vid
+            i += 1
+        best_id
+
+    fn _extract(self, ydl: PyObject, target: str, download: bool) -> PyObject | Error:
+        try ydl.extract_info(target, download=download)
+
+    fn _download(self, video_id: str) -> str:
+        let template = io.path_join(self.workspace, "%(id)s.%(ext)s")
+        let format_spec = "bestvideo[height<=720][height>=480][ext=mp4]/bestvideo[height<=1080][ext=mp4]/best[ext=mp4]/best"
+        let opts: {str: Any} = {
+            "outtmpl": template,
+            "format": format_spec,
+            "cookiefile": self.cookies_file,
+            "quiet": True,
+            "no_warnings": True,
+            "noprogress": True,
+            "retries": 3,
+            "fragment_retries": 3,
+            "geo_bypass": True,
+            "concurrent_fragment_downloads": 4,
+        }
+        let ydl = ytdlp.YoutubeDL(realize(opts))
+
+        match self._extract(ydl, f"https://www.youtube.com/watch?v={video_id}", True):
+            Error(e):
+                logging.warn(f"Download failed: {e}")
+                ""
+            info:
+                let raw: str = str(ydl.prepare_filename(info))
+                if io.path_ext(raw) == "mp4":
+                    return raw
+                f"{io.path_stem(raw)}.mp4"
+
+    fn download_video(self, query: str, max_results: int = 10) -> str:
+        self._refresh_cookies_if_needed()
+
+        let ids = self._collect_candidates(query, max_results)
+        if len(ids) == 0:
+            logging.warn(f"No results found for query: {query}")
+            return ""
+
+        let best = self._best_candidate(query, &ids)
+        let mut chosen = ids[0]
+        if best != "":
+            chosen = best
+
+        let path = self._download(chosen)
+        if path != "":
+            logging.info(f"Accepted video: {path}")
+        path

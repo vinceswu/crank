@@ -1,0 +1,64 @@
+from plugins.base import BackgroundVideoPlugin
+from scraper import YouTubeScraper
+from processor import VideoProcessor
+import io
+import yaml
+import logging
+
+const PLUGIN_CONFIG = "plugins/default/config.yml"
+
+struct DefaultPlugin:
+    workspace: str
+    cookies_file: str
+    max_results: int
+    processor: VideoProcessor
+    scraper: YouTubeScraper
+
+impl BackgroundVideoPlugin for DefaultPlugin:
+    fn get_media(self, data: {str: Any}) -> str:
+        let search_term: str = str(data.get("search_term", ""))
+
+        if search_term == "":
+            logging.warn("No search_term found in data dictionary. Using empty string.")
+
+        logging.debug(f"Getting media for search term: {search_term}")
+        let video_path = self.scraper.download_video(search_term, self.max_results)
+
+        if video_path == "":
+            return ""
+
+        let short_path = self.processor.process_to_short(video_path)
+        io.delete(video_path)
+        logging.info(f"Video template stored at {short_path}")
+        short_path
+
+impl DefaultPlugin:
+    fn __init__(self, workspace: str):
+        self.workspace = workspace
+        io.mkdir(workspace)
+
+        self.cookies_file = ""
+        self.max_results = 10
+        self._load_config()
+        self.processor = VideoProcessor(workspace)
+        self.scraper = YouTubeScraper(workspace, self.cookies_file, None)
+
+    fn _load_config(self):
+        if not io.exists(PLUGIN_CONFIG):
+            logging.info(f"Config file not found at {PLUGIN_CONFIG}. Using defaults.")
+            return
+
+        let raw = yaml.parse(io.read_file(PLUGIN_CONFIG))
+        if raw == None:
+            return
+
+        let parsed: {str: Any} = raw
+        let cf = parsed.get("cookies_file", None)
+
+        if cf != None:
+            self.cookies_file = str(cf)
+        self.max_results = int(parsed.get("max_results", 10))
+        logging.info(f"Loaded config from {PLUGIN_CONFIG}")
+
+fn make_default(workspace: str) -> BackgroundVideoPlugin:
+    DefaultPlugin(workspace)

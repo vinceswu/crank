@@ -1,0 +1,98 @@
+from utils.constants import MAX_VIDEO_DURATION, SHORT_WIDTH, SHORT_HEIGHT, FFMPEG_PRESET, FFMPEG_CRF, FFMPEG_AUDIO_BITRATE, FFMPEG_AUDIO_CODEC, FFMPEG_VIDEO_CODEC, FFMPEG_PIX_FMT
+import io
+import math
+import logging
+import yaml
+import py "subprocess" as sp
+
+enum EditResult:
+    Done(str)
+    FileMissing(str)
+    ProbeFailed(str)
+    BadDuration(str)
+    EncodeFailed(str)
+
+struct Editor:
+    workspace: str
+
+impl Editor:
+    fn __init__(self, workspace: str):
+        self.workspace = workspace
+
+    fn _get_duration(self, file_path: str) -> float:
+        if not io.exists(file_path):
+            return -1.0
+
+        let cmd = ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "json", file_path]
+        let proc = sp.run(cmd, capture_output=True, text=True)
+
+        if int(proc.returncode) != 0:
+            logging.error(f"FFprobe failed for {file_path}: {str(proc.stderr)}")
+            return -1.0
+
+        let parsed = yaml.parse(str(proc.stdout))
+
+        if parsed == None:
+            logging.error(f"Failed to parse FFprobe output for {file_path}")
+            return -1.0
+
+        float(parsed["format"]["duration"])
+
+    fn _run_ffmpeg(self, cmd: [str]) -> PyObject | Error:
+        try sp.run(cmd, check=True, capture_output=True, text=True, timeout=300)
+
+    fn assemble(self, ass_path: str, audio_path: str, media_path: str, background_audio_path: str = "", suppress_captions: bool = False) -> EditResult:
+        if not io.exists(ass_path):
+            return FileMissing(ass_path)
+
+        if not io.exists(audio_path):
+            return FileMissing(audio_path)
+
+        if not io.exists(media_path):
+            return FileMissing(media_path)
+
+        let audio_duration = self._get_duration(audio_path)
+        if audio_duration < 0.0:
+            return ProbeFailed(audio_path)
+
+        let media_duration = self._get_duration(media_path)
+        if media_duration < 0.0:
+            return ProbeFailed(media_path)
+
+        let final_duration = math.min(math.min(audio_duration, media_duration), MAX_VIDEO_DURATION)
+        if final_duration <= 0.0:
+            return BadDuration(f"audio {audio_duration:.2f}s, media {media_duration:.2f}s")
+
+        let output_path = io.path_join(self.workspace, "output.mp4")
+
+        let mut cmd: [str] = ["ffmpeg", "-y", "-i", media_path, "-i", audio_path]
+        let mut audio_map = "1:a:0"
+        let mut audio_filter = ""
+
+        if background_audio_path != "":
+            cmd = cmd + ["-i", background_audio_path]
+            audio_filter = "[1:a][2:a]amix=inputs=2:duration=first:dropout_transition=2[a]"
+            audio_map = "[a]"
+
+        let mut filter_complex = f"[0:v]scale={SHORT_WIDTH}:{SHORT_HEIGHT}:force_original_aspect_ratio=decrease,pad={SHORT_WIDTH}:{SHORT_HEIGHT}:(ow-iw)/2:(oh-ih)/2:color=black[bg]"
+        let mut last_label = "[bg]"
+
+        if not suppress_captions:
+            let escaped = ass_path.replace(":", "\\:").replace("'", "\\'")
+            filter_complex = filter_complex + ";" + last_label + "ass='" + escaped + "'[v]"
+            last_label = "[v]"
+
+        if audio_filter != "":
+            filter_complex = filter_complex + ";" + audio_filter
+
+        cmd = cmd + ["-filter_complex", filter_complex, "-map", last_label, "-map", audio_map, "-c:v", FFMPEG_VIDEO_CODEC, "-preset", FFMPEG_PRESET, "-crf", str(FFMPEG_CRF), "-c:a", FFMPEG_AUDIO_CODEC, "-b:a", FFMPEG_AUDIO_BITRATE, "-pix_fmt", FFMPEG_PIX_FMT, "-movflags", "+faststart", "-t", str(final_duration), output_path]
+
+        match self._run_ffmpeg(cmd):
+            Error(e):
+                logging.error(f"FFmpeg failed: {e}")
+                EncodeFailed(str(e))
+            _:
+                if not io.exists(output_path):
+                    return EncodeFailed("Output video is empty or missing")
+                logging.info(f"Successfully generated output video: {output_path}")
+                Done(output_path)

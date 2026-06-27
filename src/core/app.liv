@@ -1,0 +1,161 @@
+from orchestrator import Orchestrator
+from plugins.base import BackgroundVideoPlugin
+from plugins.registry import PluginRegistry
+from plugins.default.plugin import make_default
+from yml_handler import YmlHandler
+from gemini import Gemini
+from editor import Editor
+from caption.caption import Handler
+from uploader import Uploader
+from utils.colors import CYAN, YELLOW, GREEN, RED, WHITE, DIM, RESET
+from utils.constants import DEFAULT_CHANNEL_NAME, DEFAULT_FONT, DEFAULT_SECRETS_FILE, DEFAULT_WHISPER_MODEL, DEFAULT_PRESET_FILE
+import io
+import os
+import time
+import logging
+import py "sys" as sys
+import py "tempfile" as tempfile
+import py "shutil" as shutil
+import py "google.genai" as genai
+import signal
+import meta
+
+const COOLDOWN_SECONDS = 86400.0
+
+fn print_banner():
+    print(f"{CYAN}")
+    print(" ██████╗██████╗  █████╗ ███╗   ██╗██╗  ██╗")
+    print("██╔════╝██╔══██╗██╔══██╗████╗  ██║██║ ██╔╝")
+    print("██║     ██████╔╝███████║██╔██╗ ██║█████╔╝ ")
+    print("██║     ██╔══██╗██╔══██║██║╚██╗██║██╔═██╗ ")
+    print("╚██████╗██║  ██║██║  ██║██║ ╚████║██║  ██╗")
+    print(f" ╚═════╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═══╝╚═╝  ╚═╝{RESET}")
+    print(f"    by {meta.AUTHOR} ~ automate your shorts :3")
+    print(f"                v{meta.VERSION}\n")
+
+struct Core:
+    workspace: str
+    preset: YmlHandler
+    channel_name: str
+    orchestrator: Orchestrator
+
+impl Core:
+    fn __init__(self, workspace: str, preset_path: str):
+        self.workspace = workspace
+        self.preset = YmlHandler(preset_path)
+        self.channel_name = str(self.preset.get("NAME", DEFAULT_CHANNEL_NAME))
+
+        let mut api_key = str(self.preset.get("GEMINI_API_KEY", ""))
+        if api_key == "":
+            api_key = os.getenv("GEMINI_API_KEY")
+        if api_key == "":
+            print(f"{RED}GEMINI_API_KEY not found. Set it in config/preset.yml or the environment.{RESET}")
+            os.exit(1)
+        let client = genai.Client(api_key=api_key)
+
+        let upload_enabled = self.preset.get("UPLOAD", True) != False
+        let uploader = Uploader(self.channel_name, str(self.preset.get("OAUTH_PATH", DEFAULT_SECRETS_FILE)))
+
+        let mut registry = PluginRegistry()
+        registry.register("default", make_default)
+        let mut plugin_name = str(self.preset.get("BACKGROUND_PLUGIN", "default"))
+        if not registry.has_plugin(plugin_name):
+            logging.warn(f"Plugin '{plugin_name}' not found. Falling back to 'default'.")
+            plugin_name = "default"
+
+        let plugin = match registry.get_plugin(plugin_name, workspace):
+            None:
+                print(f"{RED}Failed to load plugin '{plugin_name}'.{RESET}")
+                os.exit(1)
+                make_default(workspace)
+            p: p
+
+        let gemini = Gemini(client, workspace)
+        let editor = Editor(workspace)
+        let caption = Handler(workspace, str(self.preset.get("WHISPER_MODEL", DEFAULT_WHISPER_MODEL)), str(self.preset.get("FONT", DEFAULT_FONT)))
+        self.orchestrator = Orchestrator(self.preset, plugin, gemini, editor, caption, uploader, upload_enabled)
+
+    fn _time_left(self) -> int:
+        let limit = float(self.preset.get("LIMIT_TIME", 0.0))
+
+        if limit <= 0.0:
+            return 0
+
+        let remaining = COOLDOWN_SECONDS - (time.now() - limit)
+
+        if remaining < 0.0:
+            return 0
+        int(remaining)
+
+    fn _wait_cooldown(self):
+        let mut left = self._time_left()
+        if left > 0:
+            print(f"\n{YELLOW}Rate limit cooldown active...{RESET}")
+
+            while left > 0:
+                let hours = left / 3600
+                let minutes = (left % 3600) / 60
+                let seconds = left % 60
+                sys.stdout.write(f"\r{DIM}Waiting: {hours:02d}h {minutes:02d}m {seconds:02d}s remaining{RESET}")
+                sys.stdout.flush()
+                time.sleep(1.0)
+                left -= 1
+            print("\n")
+
+    fn run(self):
+        print_banner()
+        let mut running = True
+
+        while running:
+            self._wait_cooldown()
+            let preset_prompt = str(self.preset.get("PROMPT", ""))
+            let mut topic = preset_prompt
+
+            if preset_prompt != "":
+                print(f"\n{WHITE}({self.channel_name}) >>>{RESET} {YELLOW}Prompt imported from preset{RESET}\n")
+            else:
+                sys.stdout.write(f"\n{WHITE}({self.channel_name}) >>>{RESET} ")
+                sys.stdout.flush()
+                topic = io.read_line().strip()
+
+                if topic == "":
+                    print(f"{YELLOW}No prompt provided. Exiting cleanly...{RESET}")
+                    running = False
+                    continue
+
+            let output = self.orchestrator.process(topic)
+            if output == "":
+                logging.warn("Pipeline produced no output")
+            if preset_prompt != "":
+                running = False
+
+fn load_dotenv(path: str):
+    if not io.exists(path):
+        return
+    for raw in io.read_file(path).split("\n"):
+        let line = raw.strip()
+        if line == "" or line.startswith("#") or not line.contains("="):
+            continue
+        let key = line.split("=")[0].strip()
+        let mut val = line[len(key) + 1:].strip()
+        if len(val) >= 2 and (val.startswith("\"") or val.startswith("'")):
+            val = val[1:len(val) - 1]
+        if key != "":
+            os.setenv(key, val)
+
+fn run_app(preset_path: str):
+    load_dotenv(".env")
+    signal.install_sigint_handler(f"{GREEN}OK{RESET} {WHITE}Exiting cleanly...{RESET}")
+
+    if not io.exists(preset_path):
+        print(f"{RED}Error: Preset file not found: {preset_path}{RESET}")
+        os.exit(1)
+
+    logging.set_level_str("warn")
+    print(f"{DIM}Using preset: {preset_path}{RESET}\n")
+
+    let workspace = str(tempfile.mkdtemp())
+    let core = Core(workspace, preset_path)
+
+    core.run()
+    shutil.rmtree(workspace, ignore_errors=True)

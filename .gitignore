@@ -1,0 +1,14 @@
+.env
+.env.*
+*.secret
+secrets.json
+*.json
+.tokens/
+tokens/
+*.mp4
+*.wav
+*.ass
+logs/
+*.log
+grove/
+__pycache__/

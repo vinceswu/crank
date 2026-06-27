@@ -1,0 +1,29 @@
+from utils.constants import DEFAULT_PROMPT_FILE
+from yml_handler import YmlHandler
+
+const SELECTION_NOTE = "Note: For TRANSCRIPT, generate 3 candidate transcripts internally (A/B/C), compare their hooks using the criteria provided, select the best, and RETURN ONLY the chosen transcript."
+
+struct Prompt:
+    transcript: str
+    description: str
+    search_term: str
+    title: str
+    category_id: str
+
+impl Prompt:
+    fn __init__(self):
+        let p = YmlHandler(DEFAULT_PROMPT_FILE)
+        self.transcript = str(p.get("GET_CONTENT", ""))
+        self.description = str(p.get("GET_DESCRIPTION", ""))
+        self.search_term = str(p.get("GET_SEARCH_TERM", ""))
+        self.title = str(p.get("GET_TITLE", ""))
+        self.category_id = str(p.get("GET_CATEGORY_ID", ""))
+
+    fn _output_section(self) -> str:
+        "Provide output in this format: " + f"TRANSCRIPT: {self.transcript} DESCRIPTION: {self.description} SEARCH_TERM: {self.search_term} TITLE: {self.title} CATEGORY_ID: {self.category_id}"
+
+    fn build(self, query: str, used_topics: [str], plugin_instruction: str = "") -> str:
+        let mut prompt = f"Topic: {query}\n\nTopics to avoid: {used_topics}\n\n{SELECTION_NOTE}\n\n"
+        if plugin_instruction != "":
+            prompt = prompt + f"Plugin Instructions: {plugin_instruction}\n\n"
+        prompt + self._output_section()

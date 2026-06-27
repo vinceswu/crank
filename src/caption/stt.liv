@@ -1,0 +1,109 @@
+import logging
+import py "faster_whisper" as fw
+import py "torch" as torch
+
+struct SpeechToText:
+    model_size: str
+    model: PyObject
+    loaded: bool
+    device: str
+
+impl SpeechToText:
+    fn __init__(self, model_size: str):
+        self.model_size = model_size
+        self.model = None
+        self.loaded = False
+        self.device = "cpu"
+
+    fn _load(self, device: str, compute_type: str):
+        logging.info(f"Loading Whisper model '{self.model_size}' on {device} with {compute_type}")
+        self.model = fw.WhisperModel(self.model_size, device=device, compute_type=compute_type)
+        self.device = device
+        self.loaded = True
+
+    fn _ensure_model(self):
+        if self.loaded:
+            return
+
+        if int(torch.cuda.is_available()) == 1:
+            self._load("cuda", "float16")
+        else:
+            self._load("cpu", "int8")
+
+    fn _run(self, audio_path: str) -> PyObject | Error:
+        try self.model.transcribe(audio_path, word_timestamps=True)
+
+    fn _obtain(self, audio_path: str) -> PyObject | Error:
+        self._ensure_model()
+
+        match self._run(audio_path):
+            Error(e):
+                if self.device == "cuda":
+                    logging.warn("CUDA unavailable; using CPU for transcription")
+                    logging.debug(f"CUDA error: {e}")
+                    self._load("cpu", "int8")
+                    return try self.model.transcribe(audio_path, word_timestamps=True)
+                try self.model.transcribe(audio_path, word_timestamps=True)
+            seg_info:
+                seg_info
+
+    fn _empty(self) -> {str: Any}:
+        {"text": "", "segments": [], "language": "", "duration": 0.0}
+
+    fn transcribe(self, audio_path: str) -> {str: Any}:
+        logging.info(f"Transcribing audio file: {audio_path}")
+
+        let result = match self._obtain(audio_path):
+            Error(e):
+                logging.error(f"Transcription failed: {e}")
+                return self._empty()
+            ok:
+                ok
+
+        let segments = list(result[0])
+        let info = result[1]
+
+        let mut out_segments: [Any] = []
+        let mut full_text = ""
+        let n = len(segments)
+        let mut i = 0
+
+        while i < n:
+            let seg: PyObject = segments[i]
+            let seg_text: str = str(seg.text).strip()
+
+            let mut words: [Any] = []
+            let raw_words = seg.words
+
+            if raw_words != None:
+                let word_list = list(raw_words)
+                let wn = len(word_list)
+                let mut wi = 0
+
+                while wi < wn:
+                    let w: PyObject = word_list[wi]
+                    let word_entry: {str: Any} = {
+                        "word": str(w.word),
+                        "start": float(w.start),
+                        "end": float(w.end),
+                    }
+                    words.append(word_entry)
+                    wi += 1
+
+            let segment_entry: {str: Any} = {
+                "start": float(seg.start),
+                "end": float(seg.end),
+                "text": seg_text,
+                "words": words,
+            }
+            out_segments.append(segment_entry)
+            full_text = full_text + seg_text + " "
+            i += 1
+
+        logging.info(f"Transcription completed for: {audio_path}")
+        {
+            "text": full_text.strip(),
+            "segments": out_segments,
+            "language": str(info.language),
+            "duration": float(info.duration),
+        }

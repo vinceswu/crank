@@ -1,0 +1,30 @@
+from base import BackgroundVideoPlugin
+import logging
+
+// Olive compiles plugins ahead of time, so there is no runtime module discovery
+// like the Python build. Plugins register a factory under a name instead, and the
+// rest of the registry (lookup, listing, instantiation) works the same.
+struct PluginRegistry:
+    factories: {str: fn(str) -> BackgroundVideoPlugin}
+
+impl PluginRegistry:
+    fn __init__(self):
+        self.factories = {}
+
+    fn register(self, name: str, factory: fn(str) -> BackgroundVideoPlugin):
+        self.factories[name] = factory
+        logging.info(f"Discovered plugin: {name}")
+
+    fn has_plugin(self, name: str) -> bool:
+        name in self.factories
+
+    fn list_plugins(self) -> [str]:
+        self.factories.keys()
+
+    fn get_plugin(self, name: str, workspace: str) -> BackgroundVideoPlugin | None:
+        if name in self.factories:
+            let factory = self.factories[name]
+            logging.info(f"Loaded plugin instance: {name}")
+            return factory(workspace)
+        logging.error(f"Plugin '{name}' not found")
+        None

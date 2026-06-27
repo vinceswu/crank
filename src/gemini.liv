@@ -1,0 +1,138 @@
+from utils.constants import DEFAULT_VOICE, TTS_MODEL, gemini_model_versions, gemini_model_names
+import io
+import time
+import math
+import random
+import logging
+import py "google.genai" as genai
+import py "google.genai.types" as gtypes
+import py "wave" as wave
+
+enum GeminiResult:
+    Ok(str)
+    EmptyTranscript
+    QuotaExceeded
+    TTSUnavailable
+    ModelNotFound(str)
+    AllModelsFailed
+
+struct Gemini:
+    client: genai.Client
+    workspace: str
+    versions: [str]
+    names: [str]
+    voice: str
+
+impl Gemini:
+    fn __init__(self, client: genai.Client, workspace: str):
+        self.client = client
+        self.workspace = workspace
+        self.versions = gemini_model_versions()
+        self.names = gemini_model_names()
+        self.voice = DEFAULT_VOICE
+
+    fn _is_quota(self, err: str) -> bool:
+        err.contains("429") and err.contains("RESOURCE_EXHAUSTED")
+
+    fn _is_retryable(self, err: str) -> bool:
+        err.contains("503") or err.contains("UNAVAILABLE") or err.contains("5xx")
+
+    fn _backoff(self, attempt: int):
+        let wait = math.pow(2.0, float(attempt)) + random.random()
+        logging.warn(f"Attempt {attempt} failed, retrying in {wait:.1f}s")
+        time.sleep(wait)
+
+    fn _resolve(self, version: str) -> int:
+        let mut start = -1
+        let mut i = 0
+
+        while i < len(self.versions):
+            if self.versions[i] == version:
+                start = i
+            i += 1
+
+        start
+
+    fn _save_to_wav(self, pcm: bytes) -> str:
+        let path = io.path_join(self.workspace, "speech.wav")
+        let wf = wave.open(path, "wb")
+        wf.setnchannels(1)
+        wf.setsampwidth(2)
+        wf.setframerate(32000)
+        wf.writeframes(pcm)
+        wf.close()
+        path
+
+    fn _tts_generate(self, transcript: str) -> gtypes.GenerateContentResponse | Error:
+        let voice_cfg = gtypes.VoiceConfig(
+            prebuilt_voice_config=gtypes.PrebuiltVoiceConfig(voice_name=self.voice)
+        )
+        let cfg = gtypes.GenerateContentConfig(
+            response_modalities=["AUDIO"],
+            speech_config=gtypes.SpeechConfig(voice_config=voice_cfg),
+        )
+        try self.client.models.generate_content(model=TTS_MODEL, contents=transcript, config=cfg)
+
+    fn _text_generate(self, model: str, query: str) -> gtypes.GenerateContentResponse | Error:
+        try self.client.models.generate_content(model=model, contents=query)
+
+    fn get_audio(self, transcript: str, max_retries: int = 3) -> GeminiResult:
+        if transcript == "":
+            return EmptyTranscript()
+
+        let mut attempt = 0
+
+        while attempt < max_retries:
+            attempt += 1
+
+            match self._tts_generate(transcript):
+                Error(e):
+                    if self._is_quota(e):
+                        return QuotaExceeded()
+                    if not (self._is_retryable(e) and attempt < max_retries):
+                        return TTSUnavailable()
+                    self._backoff(attempt)
+                resp:
+                    let data = resp.candidates[0].content.parts[0].inline_data.data
+                    if data == None:
+                        return TTSUnavailable()
+                    let path = self._save_to_wav(data)
+                    logging.info(f"Audio saved to {path}")
+                    return Ok(path)
+
+        TTSUnavailable()
+
+    fn get_response(self, query: str, version: str, max_retries: int = 3) -> GeminiResult:
+        let start = self._resolve(version)
+
+        if start < 0:
+            logging.error(f"Model '{version}' not found")
+            return ModelNotFound(version)
+
+        let mut mi = start
+
+        while mi < len(self.names):
+            let model = self.names[mi]
+            let mut attempt = 1
+
+            while attempt <= max_retries:
+                match self._text_generate(model, query):
+                    Error(e):
+                        if self._is_quota(e):
+                            return QuotaExceeded()
+                        logging.warn(f"{model} attempt {attempt} failed: {e}")
+                        self._backoff(attempt)
+                    resp:
+                        if resp.text == None:
+                            logging.warn(f"{model} returned no text")
+                            self._backoff(attempt)
+                        else:
+                            let text: str = str(resp.text)
+                            logging.info(f"Gemini returned (model={model})")
+                            return Ok(text)
+                attempt += 1
+
+            logging.warn(f"Model {model} exhausted retries, trying fallback if available")
+            mi += 1
+
+        AllModelsFailed()

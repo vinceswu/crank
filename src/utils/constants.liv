@@ -1,0 +1,55 @@
+const SHORT_WIDTH = 1080
+const SHORT_HEIGHT = 1920
+const SHORT_ASPECT_RATIO = 9.0 / 16.0
+
+const MAX_VIDEO_DURATION = 60.0
+const MIN_VIDEO_DURATION = 1.0
+const TARGET_VIDEO_DURATION = 60.0
+
+const SUBTITLE_RESOLUTION_X = 1920
+const SUBTITLE_RESOLUTION_Y = 1080
+const SUBTITLE_FONT_SIZE = 48
+const DEFAULT_FONT = "Comic Sans MS"
+
+const RATE_LIMIT_COOLDOWN_HOURS = 24
+const RATE_LIMIT_CHECK_INTERVAL_SECONDS = 1
+
+const COOKIE_REFRESH_INTERVAL = 3600
+
+const DEFAULT_UPLOAD_DELAY = 2.5
+
+const DEFAULT_SECRETS_FILE = "secrets.json"
+const DEFAULT_PRESET_FILE = "config/preset.yml"
+const DEFAULT_PROMPT_FILE = "config/prompt.yml"
+const DEFAULT_LOG_FILE = "logs/crank.log"
+const TOKEN_FOLDER = ".tokens"
+
+const DEFAULT_GEMINI_MODEL = "2.5"
+const DEFAULT_VOICE = "Alnilam"
+const TTS_MODEL = "gemini-2.5-flash-preview-tts"
+
+fn gemini_model_versions() -> [str]:
+    ["2.5", "2.0"]
+
+fn gemini_model_names() -> [str]:
+    ["gemini-2.5-flash", "gemini-2.0-flash"]
+
+const DEFAULT_WHISPER_MODEL = "small"
+
+const DEFAULT_CHANNEL_NAME = "crank"
+
+const SCENE_THRESHOLD = 0.35
+const MAX_SEGMENT_LENGTH = 7.0
+const TEXT_DETECTION_THRESHOLD = 22.0
+
+const MAX_SEARCH_RESULTS = 10
+const MAX_DOWNLOAD_RETRIES = 4
+
+const FFMPEG_PRESET = "medium"
+const FFMPEG_CRF = 23
+const FFMPEG_AUDIO_BITRATE = "128k"
+const FFMPEG_AUDIO_CODEC = "aac"
+const FFMPEG_VIDEO_CODEC = "libx264"
+const FFMPEG_PIX_FMT = "yuv420p"
+
+const YOUTUBE_SCOPE = "https://www.googleapis.com/auth/youtube.upload"

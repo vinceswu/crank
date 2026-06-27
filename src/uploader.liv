@@ -1,0 +1,137 @@
+from utils.constants import DEFAULT_CHANNEL_NAME, DEFAULT_SECRETS_FILE, TOKEN_FOLDER, YOUTUBE_SCOPE
+import io
+import logging
+import py "datetime" as dt
+import py "google.oauth2.credentials" as gcreds
+import py "google_auth_oauthlib.flow" as gflow
+import py "google.auth.transport.requests" as gauth
+import py "googleapiclient.discovery" as gdiscovery
+import py "googleapiclient.http" as ghttp
+
+struct VideoData:
+    video_path: str
+    title: str = ""
+    description: str = "Like and Subscribe!!"
+    category_id: int = 24
+    delay: int = 0
+    last_upload: PyObject = None
+
+enum AuthResult:
+    AuthOk
+    AuthError(str)
+
+enum UploadOutcome:
+    Uploaded(str, PyObject)
+    SecretsMissing(str)
+    AuthFailed(str)
+    UploadFailed(str)
+
+struct Uploader:
+    name: str
+    secrets_file: str
+    token_file: str
+    scopes: [str]
+    credentials: PyObject
+    service: PyObject
+    authenticated: bool
+
+impl Uploader:
+    fn __init__(self, name: str = DEFAULT_CHANNEL_NAME, auth_token: str = DEFAULT_SECRETS_FILE):
+        self.name = name.replace(" ", "").lower()
+        self.secrets_file = auth_token
+        self.scopes = [YOUTUBE_SCOPE]
+        io.mkdir(TOKEN_FOLDER)
+        self.token_file = io.path_join(TOKEN_FOLDER, f"{self.name}_token.json")
+        self.credentials = None
+        self.service = None
+        self.authenticated = False
+
+    fn _authenticate(self) -> bool | Error:
+        if io.exists(self.token_file) and self.credentials == None:
+            self.credentials = try gcreds.Credentials.from_authorized_user_file(self.token_file, self.scopes)
+
+        if self.credentials == None or int(self.credentials.valid) == 0:
+            if self.credentials != None and int(self.credentials.expired) == 1 and self.credentials.refresh_token != None:
+                try self.credentials.refresh(gauth.Request())
+            else:
+                let flow = try gflow.InstalledAppFlow.from_client_secrets_file(self.secrets_file, self.scopes)
+                self.credentials = try flow.run_local_server(port=0, open_browser=False)
+            io.write_file(self.token_file, str(self.credentials.to_json()))
+
+        self.service = try gdiscovery.build("youtube", "v3", credentials=self.credentials)
+        True
+
+    fn _ensure_authenticated(self) -> AuthResult:
+        if self.authenticated:
+            return AuthOk
+
+        match self._authenticate():
+            Error(e):
+                if e.contains("Refresh"):
+                    logging.error("Refresh Failed. Delete token before retrying.")
+                    if io.exists(self.token_file):
+                        io.delete(self.token_file)
+                    self.credentials = None
+                    match self._authenticate():
+                        Error(e2):
+                            AuthError(e2)
+                        _:
+                            self.authenticated = True
+                            AuthOk
+                else:
+                    AuthError(e)
+            _:
+                self.authenticated = True
+                AuthOk
+
+    fn _schedule_time(self, video: VideoData, now: PyObject) -> PyObject:
+        if video.last_upload != None and video.delay > 0:
+            let candidate = video.last_upload + dt.timedelta(hours=video.delay)
+            if candidate > now:
+                return candidate
+        now
+
+    fn _build_body(self, video: VideoData, scheduled: PyObject, now: PyObject) -> {str: Any}:
+        let mut body: {str: Any} = {
+            "snippet": {
+                "title": f"{video.title} #shorts",
+                "description": video.description,
+                "categoryId": video.category_id,
+            },
+            "status": {"privacyStatus": "public"},
+        }
+
+        if scheduled > now:
+            body["status"]["publishAt"] = str(scheduled.strftime("%Y-%m-%dT%H:%M:%S.000Z"))
+            body["status"]["privacyStatus"] = "private"
+
+        body
+
+    fn _execute(self, body: {str: Any}, media_path: str) -> PyObject | Error:
+        let media = ghttp.MediaFileUpload(media_path, mimetype="video/*", resumable=True)
+        let request = self.service.videos().insert(part="snippet,status", body=body, media_body=media)
+        try request.execute()
+
+    fn upload(self, video: VideoData) -> UploadOutcome:
+        if not io.exists(self.secrets_file):
+            return SecretsMissing(self.secrets_file)
+
+        match self._ensure_authenticated():
+            AuthError(e):
+                return AuthFailed(e)
+            _:
+                pass
+
+        let now = dt.datetime.now(dt.UTC)
+        let scheduled = self._schedule_time(video, now)
+        let body = self._build_body(video, scheduled, now)
+
+        match self._execute(body, video.video_path):
+            Error(e):
+                logging.error(f"Failed to upload: {e}")
+                UploadFailed(e)
+            resp:
+                let vid: str = str(resp["id"])
+                let url = f"https://www.youtube.com/watch?v={vid}"
+                logging.info(f"Uploaded successfully: {url}")
+                Uploaded(url, scheduled)

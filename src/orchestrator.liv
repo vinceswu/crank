@@ -1,0 +1,244 @@
+from caption.caption import Handler
+from plugins.base import BackgroundVideoPlugin
+from yml_handler import YmlHandler
+from prompt import Prompt
+from gemini import Gemini, GeminiResult
+from editor import Editor, EditResult
+from uploader import Uploader, VideoData, UploadOutcome
+from utils.colors import GREEN, RED, WHITE, YELLOW, MAGENTA, RESET
+from utils.constants import DEFAULT_GEMINI_MODEL
+import io
+import time
+import logging
+import py "sys" as sys
+import py "datetime" as dt
+
+const OUTPUT_FILE = "output.mp4"
+
+const FIELD_LABELS = ["TRANSCRIPT", "DESCRIPTION", "SEARCH_TERM", "TITLE", "CATEGORY_ID"]
+
+struct Orchestrator:
+    preset: YmlHandler
+    plugin: BackgroundVideoPlugin
+    gemini: Gemini
+    editor: Editor
+    caption: Handler
+    uploader: Uploader
+    upload_enabled: bool
+    prompt: Prompt
+
+impl Orchestrator:
+    fn __init__(self, preset: YmlHandler, plugin: BackgroundVideoPlugin, gemini: Gemini, editor: Editor, caption: Handler, uploader: Uploader, upload_enabled: bool):
+        self.preset = preset
+        self.plugin = plugin
+        self.gemini = gemini
+        self.editor = editor
+        self.caption = caption
+        self.uploader = uploader
+        self.upload_enabled = upload_enabled
+        self.prompt = Prompt()
+
+    fn _now_iso(self) -> str:
+        str(dt.datetime.now(dt.UTC).isoformat())
+
+    fn _ok(self, label: str, value: str):
+        print(f"{GREEN}OK{RESET} {WHITE}{label}:{RESET} {MAGENTA}{value}{RESET}\n")
+
+    fn _err(self, message: str):
+        print(f"{RED}ERR{RESET} {WHITE}{message}{RESET}\n")
+
+    fn _begin(self, msg: str):
+        sys.stdout.write(f"{YELLOW}{msg}...{RESET}")
+        sys.stdout.flush()
+
+    fn _tick(self):
+        sys.stdout.write(f" {GREEN}✓{RESET}\n")
+        sys.stdout.flush()
+
+    fn _cross(self):
+        sys.stdout.write(f" {RED}✗{RESET}\n")
+        sys.stdout.flush()
+
+    fn _label_pos(self, text: str, label: str) -> int:
+        text.find(label + ":")
+
+    fn _next_label_pos(self, text: str, after: int) -> int:
+        let mut best = len(text)
+
+        for label in &FIELD_LABELS:
+            let marker = label + ":"
+            let region = text[after:]
+            let rel = region.find(marker)
+
+            if rel >= 0:
+                let abs_pos = after + rel
+                if abs_pos < best:
+                    best = abs_pos
+
+        best
+
+    fn _extract_field(self, text: str, label: str) -> str:
+        let pos = self._label_pos(text, label)
+
+        if pos < 0:
+            return ""
+
+        let start = pos + len(label) + 1
+        let endp = self._next_label_pos(text, start)
+        text[start:endp].strip()
+
+    fn _parse_response(self, text: str) -> {str: str}:
+        let mut result: {str: str} = {}
+        result["transcript"] = self._extract_field(text, "TRANSCRIPT")
+        result["description"] = self._extract_field(text, "DESCRIPTION")
+        result["search_term"] = self._extract_field(text, "SEARCH_TERM")
+        result["title"] = self._extract_field(text, "TITLE")
+        result["categoryId"] = self._extract_field(text, "CATEGORY_ID")
+
+        if result["transcript"] == "":
+            let stripped = text.strip()
+            if stripped.contains("Say") or len(stripped) > 50:
+                let endp = self._next_label_pos(stripped, 0)
+                result["transcript"] = stripped[0:endp].strip()
+                logging.info("Extracted transcript from beginning of response")
+
+        result
+
+    fn _gemini_text(self, query: str) -> GeminiResult:
+        self.gemini.get_response(query, DEFAULT_GEMINI_MODEL)
+
+    fn _upload(self, data: {str: str}, video_path: str) -> str:
+        let title = data["title"]
+        let mut video = VideoData(video_path, f"{title} #shorts", data["description"], 24, int(self.preset.get("DELAY", 0)), self.preset.get("LAST_UPLOAD", None))
+
+        match self.uploader.upload(video):
+            Uploaded(url, _when):
+                self.preset.set("LAST_UPLOAD", self._now_iso())
+                url
+            SecretsMissing(p):
+                logging.error(f"Secrets file missing: {p}")
+                ""
+            AuthFailed(e):
+                logging.error(f"Auth failed: {e}")
+                ""
+            UploadFailed(e):
+                logging.error(f"Upload failed: {e}")
+                ""
+
+    fn process(self, topic: str) -> str:
+        let plugin_instruction = self.plugin.get_prompt_context(topic)
+        let used: [str] = self.preset.get("USED_CONTENT", [])
+        let query = self.prompt.build(topic, used, plugin_instruction)
+
+        self._begin("Generating content script")
+        let text = match self._gemini_text(query):
+            Ok(response): response
+            EmptyTranscript:
+                self._cross()
+                return self._fail("Empty transcript")
+            QuotaExceeded:
+                self._cross()
+                return self._quota_fail()
+            TTSUnavailable:
+                self._cross()
+                return self._fail("Service unavailable")
+            ModelNotFound(v):
+                self._cross()
+                return self._fail(f"Model not found: {v}")
+            AllModelsFailed:
+                self._cross()
+                return self._fail("All models failed")
+        self._tick()
+
+        let result = self._parse_response(text)
+        if result["transcript"] == "":
+            return self._fail("Failed to extract transcript")
+
+        self._ok("Generated Content", result["title"])
+        let transcript = result["transcript"]
+
+        self._begin("Generating voiceover")
+        let audio_path = match self.gemini.get_audio(transcript):
+            Ok(p): p
+            EmptyTranscript:
+                self._cross()
+                return self._fail("Empty transcript")
+            QuotaExceeded:
+                self._cross()
+                return self._quota_fail()
+            TTSUnavailable:
+                self._cross()
+                return self._fail("TTS unavailable")
+            ModelNotFound(_v):
+                self._cross()
+                return self._fail("Model not found")
+            AllModelsFailed:
+                self._cross()
+                return self._fail("All models failed")
+        self._tick()
+        self._ok("Voiceover path", audio_path)
+
+        self._begin("Generating captions")
+        let cap_path, cap_data = self.caption.get_captions(audio_path)
+        self._tick()
+        self._ok("Captions path", cap_path)
+
+        let mut media_data: {str: Any} = {
+            "search_term": result["search_term"],
+            "transcript": transcript,
+            "title": result["title"],
+            "description": result["description"],
+            "audio_path": audio_path,
+            "captions_path": cap_path,
+            "caption_data": cap_data,
+        }
+
+        self._begin("Preparing background video")
+        let video_input = self.plugin.get_media(media_data)
+        if video_input == "":
+            self._cross()
+            return self._fail("Plugin returned no video")
+        self._tick()
+        self._ok("Background video path", video_input)
+
+        self._begin("Assembling video elements")
+        let mut output = match self.editor.assemble(cap_path, audio_path, video_input, "", False):
+            Done(path): path
+            FileMissing(f):
+                self._cross()
+                return self._fail(f"File missing: {f}")
+            ProbeFailed(f):
+                self._cross()
+                return self._fail(f"Probe failed: {f}")
+            BadDuration(d):
+                self._cross()
+                return self._fail(f"Bad duration: {d}")
+            EncodeFailed(_e):
+                self._cross()
+                return self._fail("Encode failed")
+        self._tick()
+
+        if io.copy(output, OUTPUT_FILE):
+            output = OUTPUT_FILE
+        self._ok("Output Path", output)
+
+        if self.upload_enabled:
+            self._begin("Uploading to YouTube")
+            let url = self._upload(result, output)
+            if url != "":
+                self._tick()
+                self._ok("Successfully uploaded short", url)
+            else:
+                self._cross()
+                self._err("Upload returned no URL")
+
+        output
+
+    fn _fail(self, message: str) -> str:
+        self._err(message)
+        ""
+
+    fn _quota_fail(self) -> str:
+        self.preset.set("LIMIT_TIME", time.now())
+        self._err("Daily API quota exceeded.")
+        ""

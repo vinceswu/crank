@@ -1,0 +1,6 @@
+trait BackgroundVideoPlugin:
+    fn get_media(self, data: {str: Any}) -> str:
+        ""
+
+    fn get_prompt_context(self, _topic: str) -> str:
+        ""

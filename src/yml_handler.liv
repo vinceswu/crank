@@ -1,0 +1,43 @@
+import io
+import yaml
+
+struct YmlHandler:
+    path: str
+    state: {str: Any}
+
+    fn __init__(self, path: str):
+        self.path = path
+        self.state = self._load()
+
+    fn _load(self) -> {str: Any}:
+        if io.exists(self.path):
+            let parsed = yaml.parse(io.read_file(self.path))
+            if parsed == None:
+                {}
+            else:
+                parsed
+        else:
+            {}
+
+    fn save(self):
+        io.write_file(self.path, yaml.stringify(self.state))
+
+    fn get(self, key: str, default: Any = None) -> Any:
+        self.state.get(key, default)
+
+    fn set(self, key: str, value: Any):
+        self.state[key] = value
+        self.save()
+
+    fn delete(self, key: str):
+        if key in self.state:
+            self.state.remove(key)
+            self.save()
+
+    fn update(self, new_state: {str: Any}):
+        for k, v in new_state.items():
+            self.state[k] = v
+        self.save()
+
+    fn batch_set(self, updates: {str: Any}):
+        self.update(updates)
