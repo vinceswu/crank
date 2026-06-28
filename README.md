@@ -75,16 +75,9 @@ GEMINI_API_KEY=your_api_key_here
 curl -sSL https://raw.githubusercontent.com/ecnivslabs/olive/master/install.sh | sh
 ```
 
-**Windows:** download from the [releases page](https://github.com/ecnivslabs/olive/releases/latest)
-
 ### Crank
 
-**Linux / macOS (one-liner):**
-```bash
-curl -sSL https://raw.githubusercontent.com/vinceswu/crank/master/install.sh | sh
-```
-
-**Or clone and build from source:**
+**Clone and build from source:**
 ```bash
 git clone https://github.com/vinceswu/crank.git
 cd crank
