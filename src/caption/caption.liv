@@ -66,8 +66,8 @@ impl Handler:
 
                 while i < n:
                     let tok: sptokens.Token = doc[i]
-                    let pos: str = str(tok.pos_)
-                    let txt: str = str(tok.text)
+                    let pos: str = tok.pos_
+                    let txt: str = tok.text
 
                     if pos == "VERB":
                         parts.append(VERB_COLOR + txt)
@@ -82,7 +82,7 @@ impl Handler:
 
     fn _chunk_size(self, words_data: &[Any], i: int) -> int:
         let current: {str: Any} = words_data[i]
-        let current_word: str = str(current["word"]).strip()
+        let current_word: str = current["word"].strip()
 
         if len(current_word) > 8:
             return 1
@@ -98,7 +98,7 @@ impl Handler:
 
         while j < limit:
             let nxt: {str: Any} = words_data[j]
-            let next_word: str = str(nxt["word"]).strip()
+            let next_word: str = nxt["word"].strip()
 
             if total_chars + len(next_word) + 1 > 20:
                 break
@@ -121,9 +121,9 @@ impl Handler:
         let words_data: [Any] = segment.get("words", [])
 
         if len(words_data) == 0:
-            let start = self._format_timestamp(float(segment["start"]))
-            let end = self._format_timestamp(float(segment["end"]))
-            let text: str = str(segment["text"]).strip()
+            let start = self._format_timestamp(segment["start"])
+            let end = self._format_timestamp(segment["end"])
+            let text: str = segment["text"].strip()
             lines.append(f"Dialogue: 0,{start},{end},Dynamic,,0,0,0,,{text}")
             return lines
 
@@ -134,15 +134,15 @@ impl Handler:
             let chunk_size = self._chunk_size(&words_data, i)
             let first: {str: Any} = words_data[i]
             let last: {str: Any} = words_data[i + chunk_size - 1]
-            let start_time = float(first["start"])
-            let end_time = float(last["end"])
+            let start_time = first["start"]
+            let end_time = last["end"]
 
             let mut words_text: [str] = []
             let mut k = 0
 
             while k < chunk_size:
                 let w: {str: Any} = words_data[i + k]
-                words_text.append(str(w["word"]).strip())
+                words_text.append(w["word"].strip())
                 k += 1
 
             let formatted = self._apply_pos_coloring(words_text)

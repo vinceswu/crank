@@ -16,7 +16,7 @@ struct DefaultPlugin:
 
 impl BackgroundVideoPlugin for DefaultPlugin:
     fn get_media(self, data: {str: Any}) -> str:
-        let search_term: str = str(data.get("search_term", ""))
+        let search_term: str = data.get("search_term", "")
 
         if search_term == "":
             logging.warn("No search_term found in data dictionary. Using empty string.")

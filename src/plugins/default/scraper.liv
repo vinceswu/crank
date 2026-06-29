@@ -93,8 +93,8 @@ impl YouTubeScraper:
         keywords
 
     fn _text_of(self, entry: &{str: Any}) -> str:
-        let title: str = str(entry.get("title", ""))
-        let description: str = str(entry.get("description", ""))
+        let title: str = entry.get("title", "")
+        let description: str = entry.get("description", "")
         f"{title} {description}".lower()
 
     fn _relevance_score(self, entry: &{str: Any}, keywords: &[str]) -> int:
@@ -111,7 +111,7 @@ impl YouTubeScraper:
 
     fn _score_entry(self, entry: &{str: Any}) -> float:
         let mut score = 0.0
-        let duration = float(entry.get("duration", 0))
+        let duration = entry.get("duration", 0)
 
         if duration >= 90.0:
             score = score + 3.0
@@ -147,11 +147,11 @@ impl YouTubeScraper:
             if text.contains(n):
                 score = score - 3.0
 
-        let url: str = str(entry.get("webpage_url", ""))
+        let url: str = entry.get("webpage_url", "")
         if url.lower().contains("shorts"):
             score = score - 4.0
 
-        let views = float(entry.get("view_count", 0))
+        let views = entry.get("view_count", 0)
         if views > 0.0:
             score = score + math.min(3.0, math.log10(views + 1.0))
         score
@@ -208,7 +208,7 @@ impl YouTubeScraper:
 
                 while i < n:
                     let e: {str: Any} = entries[i]
-                    let vid: str = str(e.get("id", ""))
+                    let vid: str = e.get("id", "")
                     if len(vid) == 11:
                         ids.append(vid)
                     i += 1
@@ -265,7 +265,7 @@ impl YouTubeScraper:
                 logging.warn(f"Download failed: {e}")
                 ""
             info:
-                let raw: str = str(ydl.prepare_filename(info))
+                let raw: str = ydl.prepare_filename(info)
                 if io.path_ext(raw) == "mp4":
                     return raw
                 f"{io.path_stem(raw)}.mp4"

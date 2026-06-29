@@ -1,6 +1,6 @@
 [pod]
 name = "crank"
-version = "2.0.1"
+version = "2.0.2"
 author = "vinceswu"
 entry = "src/main.liv"
-olive = ">=0.4.3"
+olive = ">=0.4.5"

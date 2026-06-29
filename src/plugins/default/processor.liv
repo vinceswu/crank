@@ -24,7 +24,7 @@ impl VideoProcessor:
             path,
         ]
         let proc = sp.run(cmd, capture_output=True, text=True)
-        let out: str = str(proc.stdout)
+        let out: str = proc.stdout
         let trimmed = out.strip()
 
         if trimmed == "":
@@ -46,7 +46,7 @@ impl VideoProcessor:
             "-",
         ]
         let proc = sp.run(cmd, capture_output=True, text=True)
-        let stderr: str = str(proc.stderr)
+        let stderr: str = proc.stderr
         let mut cuts: [float] = []
 
         for line in stderr.split("\n"):
@@ -84,7 +84,7 @@ impl VideoProcessor:
             "-",
         ]
         let proc = sp.run(cmd, capture_output=True, text=True)
-        let stderr: str = str(proc.stderr)
+        let stderr: str = proc.stderr
         let mut total = 0.0
         let mut count = 0
 
@@ -320,6 +320,6 @@ impl VideoProcessor:
             ]
 
         let proc = sp.run(cmd, capture_output=True, text=True)
-        if int(proc.returncode) != 0:
-            logging.error(f"Processing failed: {str(proc.stderr)}")
+        if proc.returncode != 0:
+            logging.error(f"Processing failed: {proc.stderr}")
         output_path
