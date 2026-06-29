@@ -39,7 +39,7 @@ GEMINI_API_KEY=your_api_key_here
 
 #### Credential Files
 
-- `secrets.json`: OAuth 2.0 client credentials for YouTube API upload
+`secrets.json`: OAuth 2.0 client credentials for YouTube API upload
 
 ## Customization
 
