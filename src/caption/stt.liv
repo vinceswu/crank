@@ -27,7 +27,7 @@ impl SpeechToText:
         if self.loaded:
             return
 
-        if torch.cuda.is_available() == 1:
+        if int(torch.cuda.is_available()) == 1:
             self._load("cuda", "float16")
         else:
             self._load("cpu", "int8")
@@ -77,7 +77,7 @@ impl SpeechToText:
 
         while i < n:
             let seg: fwt.Segment = segments[i]
-            let seg_text: str = seg.text.strip()
+            let seg_text: str = str(seg.text).strip()
 
             let mut words: [Any] = []
             let raw_words: typing.Iterable | None = seg.words
@@ -89,13 +89,17 @@ impl SpeechToText:
 
                 while wi < wn:
                     let w: fwt.Word = word_list[wi]
-                    let word_entry: {str: Any} = {"word": w.word, "start": w.start, "end": w.end}
+                    let word_entry: {str: Any} = {
+                        "word": str(w.word),
+                        "start": float(w.start),
+                        "end": float(w.end),
+                    }
                     words.append(word_entry)
                     wi += 1
 
             let segment_entry: {str: Any} = {
-                "start": seg.start,
-                "end": seg.end,
+                "start": float(seg.start),
+                "end": float(seg.end),
                 "text": seg_text,
                 "words": words,
             }
@@ -107,6 +111,6 @@ impl SpeechToText:
         {
             "text": full_text.strip(),
             "segments": out_segments,
-            "language": info.language,
-            "duration": info.duration,
+            "language": str(info.language),
+            "duration": float(info.duration),
         }
