@@ -74,7 +74,7 @@ impl Orchestrator:
     fn _next_label_pos(self, text: str, after: int) -> int:
         let mut best = len(text)
 
-        for label in &FIELD_LABELS:
+        for label in FIELD_LABELS:
             let marker = label + ":"
             let region = text[after:]
             let rel = region.find(marker)

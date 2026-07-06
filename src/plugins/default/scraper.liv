@@ -92,12 +92,12 @@ impl YouTubeScraper:
                 keywords.append(tok)
         keywords
 
-    fn _text_of(self, entry: &{str: Any}) -> str:
+    fn _text_of(self, entry: {str: Any}) -> str:
         let title: str = str(entry.get("title", ""))
         let description: str = str(entry.get("description", ""))
         f"{title} {description}".lower()
 
-    fn _relevance_score(self, entry: &{str: Any}, keywords: &[str]) -> int:
+    fn _relevance_score(self, entry: {str: Any}, keywords: [str]) -> int:
         if len(keywords) == 0:
             return 0
 
@@ -109,7 +109,7 @@ impl YouTubeScraper:
                 score += 1
         score
 
-    fn _score_entry(self, entry: &{str: Any}) -> float:
+    fn _score_entry(self, entry: {str: Any}) -> float:
         let mut score = 0.0
         let duration = float(entry.get("duration", 0))
 
@@ -140,10 +140,10 @@ impl YouTubeScraper:
             "shorts",
         ]
 
-        for p in &positives:
+        for p in positives:
             if text.contains(p):
                 score = score + 2.0
-        for n in &negatives:
+        for n in negatives:
             if text.contains(n):
                 score = score - 3.0
 
@@ -188,7 +188,7 @@ impl YouTubeScraper:
         let variants = self._enrich_query(query)
         let mut ids: [str] = []
 
-        for variant in &variants:
+        for variant in variants:
             let found = self._search_variant(variant, max_results)
             ids = found
             if len(ids) > 0:
@@ -214,16 +214,16 @@ impl YouTubeScraper:
                     i += 1
         ids
 
-    fn _candidate_score(self, video_id: str, keywords: &[str]) -> float:
+    fn _candidate_score(self, video_id: str, keywords: [str]) -> float:
         match self._fetch_meta(video_id):
             Error(e):
                 logging.debug(f"Metadata fetch failed: {e}")
                 -1.0
             meta:
-                let rel = float(self._relevance_score(&meta, keywords))
-                rel * 1000.0 + self._score_entry(&meta)
+                let rel = float(self._relevance_score(meta, keywords))
+                rel * 1000.0 + self._score_entry(meta)
 
-    fn _best_candidate(self, query: str, ids: &[str]) -> str:
+    fn _best_candidate(self, query: str, ids: [str]) -> str:
         let keywords = self._extract_keywords(query)
         let mut best_id = ""
         let mut best_key = -1.0
@@ -232,7 +232,7 @@ impl YouTubeScraper:
         let mut i = 0
         while i < n:
             let vid = ids[i]
-            let score = self._candidate_score(vid, &keywords)
+            let score = self._candidate_score(vid, keywords)
 
             if score > best_key:
                 best_key = score
@@ -278,7 +278,7 @@ impl YouTubeScraper:
             logging.warn(f"No results found for query: {query}")
             return ""
 
-        let best = self._best_candidate(query, &ids)
+        let best = self._best_candidate(query, ids)
         let mut chosen = ids[0]
         if best != "":
             chosen = best

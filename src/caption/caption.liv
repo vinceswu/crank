@@ -80,7 +80,7 @@ impl Handler:
 
                 " ".join(parts)
 
-    fn _chunk_size(self, words_data: &[Any], i: int) -> int:
+    fn _chunk_size(self, words_data: [Any], i: int) -> int:
         let current: {str: Any} = words_data[i]
         let current_word: str = current["word"].strip()
 
@@ -131,7 +131,7 @@ impl Handler:
         let total = len(words_data)
 
         while i < total:
-            let chunk_size = self._chunk_size(&words_data, i)
+            let chunk_size = self._chunk_size(words_data, i)
             let first: {str: Any} = words_data[i]
             let last: {str: Any} = words_data[i + chunk_size - 1]
             let start_time = first["start"]

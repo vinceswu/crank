@@ -23,7 +23,7 @@ impl VideoProcessor:
             "default=noprint_wrappers=1:nokey=1",
             path,
         ]
-        let proc = sp.run(cmd, capture_output=True, text=True)
+        let proc = sp.run(cmd, capture_output=True, text=True, errors="replace")
         let out: str = proc.stdout
         let trimmed = out.strip()
 
@@ -45,7 +45,7 @@ impl VideoProcessor:
             "null",
             "-",
         ]
-        let proc = sp.run(cmd, capture_output=True, text=True)
+        let proc = sp.run(cmd, capture_output=True, text=True, errors="replace")
         let stderr: str = proc.stderr
         let mut cuts: [float] = []
 
@@ -83,7 +83,7 @@ impl VideoProcessor:
             "null",
             "-",
         ]
-        let proc = sp.run(cmd, capture_output=True, text=True)
+        let proc = sp.run(cmd, capture_output=True, text=True, errors="replace")
         let stderr: str = proc.stderr
         let mut total = 0.0
         let mut count = 0
@@ -107,7 +107,7 @@ impl VideoProcessor:
         let bottom = self.band_edge_score(input_src, start, duration, "bottom")
         math.max(math.max(top, mid), bottom)
 
-    fn _edge_distance(self, cuts: &[float], t: float) -> float:
+    fn _edge_distance(self, cuts: [float], t: float) -> float:
         if len(cuts) == 0:
             return 999.0
 
@@ -147,16 +147,16 @@ impl VideoProcessor:
                 break
 
             if self._edge_distance(
-                &scene_cuts,
+                scene_cuts,
                 start_time,
-            ) < 0.7 or self._edge_distance(&scene_cuts, end_time) < 0.7:
+            ) < 0.7 or self._edge_distance(scene_cuts, end_time) < 0.7:
                 i += 1
                 continue
 
             let sub_score = self._max_band_score(input_src, start_time, math.min(10.0, target))
             let border_clearance = math.min(
-                self._edge_distance(&scene_cuts, start_time),
-                self._edge_distance(&scene_cuts, end_time),
+                self._edge_distance(scene_cuts, start_time),
+                self._edge_distance(scene_cuts, end_time),
             )
             let objective = border_clearance - sub_score * 0.05
 
@@ -174,7 +174,7 @@ impl VideoProcessor:
 
         (best_start, best_end, best_score)
 
-    fn _is_near_cut(self, cuts: &[float], t: float) -> bool:
+    fn _is_near_cut(self, cuts: [float], t: float) -> bool:
         self._edge_distance(cuts, t) < 0.7
 
     fn select_montage_segments(
@@ -199,14 +199,14 @@ impl VideoProcessor:
             let mut best_end = -1.0
 
             let offsets: [float] = [-1.5, -0.8, 0.0, 0.8, 1.5]
-            for offset in &offsets:
+            for offset in offsets:
                 let start = math.max(0.0, math.min(duration - 0.5, base_start + offset))
                 let end = math.min(duration, start + max_segment_len)
 
                 if end - start < 1.5:
                     continue
 
-                if self._is_near_cut(&cuts, start) or self._is_near_cut(&cuts, end):
+                if self._is_near_cut(cuts, start) or self._is_near_cut(cuts, end):
                     continue
 
                 let score = self._max_band_score(input_src, start, math.min(3.0, end - start))
@@ -225,7 +225,7 @@ impl VideoProcessor:
         let mut trimmed: [(float, float)] = []
         let mut acc = 0.0
 
-        for s, e in &segments:
+        for s, e in segments:
             let seg_len = e - s
 
             if acc + seg_len <= total_target:
@@ -250,7 +250,7 @@ impl VideoProcessor:
         while loop_idx < loops:
             let mut idx = 1
 
-            for s, e in &segments:
+            for s, e in segments:
                 let label = f"[s{loop_idx}_{idx}]"
                 trim_parts.append(f"[0:v]trim=start={s:.3f}:end={e:.3f},setpts=PTS-STARTPTS{label}")
                 seg_labels.append(label)
@@ -279,7 +279,7 @@ impl VideoProcessor:
         )
 
         let mut total_seg = 0.0
-        for s, e in &segments:
+        for s, e in segments:
             total_seg = total_seg + (e - s)
 
         let mut cmd: [str] = ["ffmpeg", "-y", "-i", input_path]
@@ -319,7 +319,7 @@ impl VideoProcessor:
                 output_path,
             ]
 
-        let proc = sp.run(cmd, capture_output=True, text=True)
+        let proc = sp.run(cmd, capture_output=True, text=True, errors="replace")
         if proc.returncode != 0:
             logging.error(f"Processing failed: {proc.stderr}")
         output_path
