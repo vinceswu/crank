@@ -53,18 +53,22 @@ impl Uploader:
                 self.scopes,
             )
 
-        if self.credentials == None or int(self.credentials.valid) == 0:
-            if self.credentials != None and int(
-                self.credentials.expired,
-            ) == 1 and self.credentials.refresh_token != None:
-                try self.credentials.refresh(gauth.Request())
+        let mut creds = self.credentials
+        if creds == None or (creds != None and int(creds.valid) == 0):
+            if creds != None and int(
+                creds.expired,
+            ) == 1 and creds.refresh_token != None:
+                try creds.refresh(gauth.Request())
             else:
                 let flow = try gflow.InstalledAppFlow.from_client_secrets_file(
                     self.secrets_file,
                     self.scopes,
                 )
-                self.credentials = try flow.run_local_server(port=0, open_browser=False)
-            io.write_file(self.token_file, str(self.credentials.to_json()))
+                creds = try flow.run_local_server(port=0, open_browser=False)
+            if creds == None:
+                return Error::Error("authentication failed")
+            io.write_file(self.token_file, str(creds.to_json()))
+            self.credentials = creds
 
         self.service = try gdiscovery.build("youtube", "v3", credentials=self.credentials)
         True
@@ -116,8 +120,11 @@ impl Uploader:
         body
 
     fn _execute(self, body: {str: Any}, media_path: str) -> {str: Any} | Error:
+        let svc = self.service
+        if svc == None:
+            return Error::Error("service not initialized")
         let media = ghttp.MediaFileUpload(media_path, mimetype="video/*", resumable=True)
-        let request = self.service.videos().insert(
+        let request = svc.videos().insert(
             part="snippet,status",
             body=body,
             media_body=media,
