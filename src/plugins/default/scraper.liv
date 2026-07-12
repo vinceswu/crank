@@ -73,12 +73,16 @@ impl YouTubeScraper:
             self._export_cookies()
 
     fn _enrich_query(self, query: str) -> [str]:
-        let positive = "cinematic b-roll slow motion macro aerial timelapse high contrast high motion establishing shot parallax tracking shot drone gimbal hyperlapse"
-        let negative = "-talking head -podcast -news -reaction -gameplay -ui -compilation -asmr -commentary -shorts -tiktok -reels"
+        // YouTube's search treats a long space-separated term list as
+        // mostly-required: stacking all 17 positive + 11 negative terms
+        // (28 extra tokens) reliably returns 0 results. Keep each variant
+        // short enough to actually match something.
+        let positive = "cinematic b-roll aerial timelapse"
+        let negative = "-talking head -podcast -shorts -tiktok -reels"
 
         let base = regex.replace_all("[^a-zA-Z0-9 ]", query, " ").strip()
         let strong = f"{base} {positive} {negative}"
-        let light = f"{base} cinematic b-roll aerial timelapse"
+        let light = f"{base} {positive}"
         [strong, light, base]
 
     fn _extract_keywords(self, query: str) -> [str]:
@@ -187,9 +191,20 @@ impl YouTubeScraper:
     fn _collect_candidates(self, query: str, max_results: int) -> [str]:
         let variants = self._enrich_query(query)
         let mut ids: [str] = []
+        let mut first = True
 
         for variant in variants:
-            let found = self._search_variant(variant, max_results)
+            // Back-to-back searches with no gap trip YouTube's throttling
+            // (observed directly: identical query returns 0 hammered, then
+            // 10 seconds later). One retry pass beats giving up on a flake.
+            if not first:
+                time.sleep(2.0)
+            first = False
+
+            let mut found = self._search_variant(variant, max_results)
+            if len(found) == 0:
+                time.sleep(2.0)
+                found = self._search_variant(variant, max_results)
             ids = found
             if len(ids) > 0:
                 break
@@ -200,7 +215,7 @@ impl YouTubeScraper:
 
         match self._search(variant, max_results):
             Error(e):
-                logging.debug(f"Search failed for variant: {e}")
+                logging.warn(f"Search failed for variant: {e}")
             info:
                 let entries: [{str: Any}] = info["entries"]
                 let n = len(entries)
