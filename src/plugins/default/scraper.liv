@@ -173,7 +173,7 @@ impl YouTubeScraper:
             "geo_bypass": True,
         }
 
-        let ydl = ytdlp.YoutubeDL(realize(opts))
+        let ydl = ytdlp.YoutubeDL(opts)
         try ydl.extract_info(f"ytsearch{max_results}:{query}", download=False)
 
     fn _fetch_meta(self, video_id: str) -> {str: Any} | Error:
@@ -185,7 +185,7 @@ impl YouTubeScraper:
             "geo_bypass": True,
         }
 
-        let ydl = ytdlp.YoutubeDL(realize(opts))
+        let ydl = ytdlp.YoutubeDL(opts)
         try ydl.extract_info(f"https://www.youtube.com/watch?v={video_id}", download=False)
 
     fn _collect_candidates(self, query: str, max_results: int) -> [str]:
@@ -273,7 +273,7 @@ impl YouTubeScraper:
             "geo_bypass": True,
             "concurrent_fragment_downloads": 4,
         }
-        let ydl = ytdlp.YoutubeDL(realize(opts))
+        let ydl = ytdlp.YoutubeDL(opts)
 
         match self._extract(ydl, f"https://www.youtube.com/watch?v={video_id}", True):
             Error(e):

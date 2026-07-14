@@ -25,7 +25,7 @@
 
 ## Prerequisites
 
-- **Olive >= 0.18.0** (see installation below)
+- **Olive >= 0.25.0** (see installation below)
 - **Python 3.x** with dependencies from `requirements.txt`
 - `ffmpeg` and `ffprobe` in your system PATH
 
